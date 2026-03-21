@@ -140,6 +140,16 @@ func (v Version) NextPatch() Version {
 	return Version{epoch: v.epoch, release: rel}
 }
 
+func (v Version) NextBreaking() Version {
+	if v.Major() > 0 || len(v.release) < 2 {
+		return v.NextMajor()
+	}
+	if v.Minor() > 0 || len(v.release) < 3 {
+		return v.NextMinor()
+	}
+	return v.NextPatch()
+}
+
 func (v Version) NextStable() Version {
 	if v.IsStable() {
 		// Increment the last release segment.
