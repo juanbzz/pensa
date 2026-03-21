@@ -179,8 +179,12 @@ func NewRange(min, max *Version, includeMin, includeMax bool) Constraint {
 	return &Range{min: min, max: max, includeMin: includeMin, includeMax: includeMax}
 }
 
-func (r *Range) IsEmpty() bool { return false }
-func (r *Range) IsAny() bool   { return r.min == nil && r.max == nil }
+func (r *Range) IsEmpty() bool      { return false }
+func (r *Range) IsAny() bool        { return r.min == nil && r.max == nil }
+func (r *Range) Min() *Version      { return r.min }
+func (r *Range) Max() *Version      { return r.max }
+func (r *Range) IncludeMin() bool   { return r.includeMin }
+func (r *Range) IncludeMax() bool   { return r.includeMax }
 
 func (r *Range) Allows(v Version) bool {
 	if r.min != nil {
