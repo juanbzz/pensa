@@ -158,3 +158,6 @@ http-client.private.env.json
 .context/
 .idea/
 .claude/
+.task/
+.envrc
+goetry
