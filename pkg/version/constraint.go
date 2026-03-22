@@ -32,7 +32,7 @@ func AnyConstraint() Constraint         { return &anyConstraint{} }
 func (a *anyConstraint) IsEmpty() bool   { return false }
 func (a *anyConstraint) IsAny() bool     { return true }
 func (a *anyConstraint) Allows(Version) bool { return true }
-func (a *anyConstraint) AllowsAll(other Constraint) bool { return other.IsAny() || other.IsEmpty() }
+func (a *anyConstraint) AllowsAll(Constraint) bool { return true }
 func (a *anyConstraint) AllowsAny(other Constraint) bool { return !other.IsEmpty() }
 func (a *anyConstraint) String() string  { return "*" }
 
@@ -175,6 +175,14 @@ type Range struct {
 func NewRange(min, max *Version, includeMin, includeMax bool) Constraint {
 	if min == nil && max == nil {
 		return AnyConstraint()
+	}
+	// If min == max and not both inclusive, the range is empty.
+	if min != nil && max != nil && Compare(*min, *max) == 0 && !(includeMin && includeMax) {
+		return empty
+	}
+	// If min > max, the range is empty.
+	if min != nil && max != nil && Compare(*min, *max) > 0 {
+		return empty
 	}
 	return &Range{min: min, max: max, includeMin: includeMin, includeMax: includeMax}
 }
