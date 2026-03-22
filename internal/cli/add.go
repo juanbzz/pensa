@@ -79,7 +79,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Resolve and lock.
-	return resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath)
+	if err := resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath); err != nil {
+		return err
+	}
+
+	// Install packages.
+	return installFromLock(cmd.OutOrStdout())
 }
 
 // parseAddArg parses "name" or "name@constraint" into components.
