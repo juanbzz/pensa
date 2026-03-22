@@ -3,8 +3,10 @@ package cli
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/juanbzz/goetry/internal/index"
@@ -26,9 +28,6 @@ func newLockCmd() *cobra.Command {
 }
 
 func runLock(cmd *cobra.Command, args []string) error {
-	start := time.Now()
-
-	// Find pyproject.toml.
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
@@ -40,7 +39,6 @@ func runLock(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("read pyproject.toml: %w", err)
 	}
 
-	// Extract dependencies.
 	deps, err := proj.ResolveDependencies()
 	if err != nil {
 		return fmt.Errorf("resolve dependencies: %w", err)
@@ -51,16 +49,24 @@ func runLock(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Create PyPI client with cache.
-	cacheDir, err := defaultCacheDir()
+	return resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath)
+}
+
+// resolveAndLock runs the full resolve → lock pipeline.
+// Shared between `lock` and `add` commands.
+func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string) error {
+	start := time.Now()
+
+	deps, err := proj.ResolveDependencies()
+	if err != nil {
+		return fmt.Errorf("resolve dependencies: %w", err)
+	}
+
+	client, err := newPyPIClient()
 	if err != nil {
 		return err
 	}
-	client := index.NewPyPIClient(
-		index.WithCache(index.NewCache(cacheDir)),
-	)
 
-	// Convert pep508 deps to resolver deps.
 	resolverDeps := make([]resolve.Dependency, 0, len(deps))
 	for _, d := range deps {
 		constraint := d.Constraint
@@ -73,18 +79,16 @@ func runLock(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	// Create provider and solver.
 	provider := &indexProvider{client: client}
 	solver := resolve.NewSolver(provider, proj.Name(), resolverDeps)
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Resolving dependencies...\n")
+	fmt.Fprintf(w, "Resolving dependencies...\n")
 
 	result, err := solver.Solve()
 	if err != nil {
 		return fmt.Errorf("resolve: %w", err)
 	}
 
-	// Build lock file.
 	pythonVersions := ">=3.8"
 	if proj.HasProjectSection() && proj.Project.RequiresPython != "" {
 		pythonVersions = proj.Project.RequiresPython
@@ -97,16 +101,26 @@ func runLock(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("build lock file: %w", err)
 	}
 
-	lockPath := filepath.Join(dir, "poetry.lock")
+	lockPath := filepath.Join(filepath.Dir(pyprojectPath), "poetry.lock")
 	if err := lockfile.WriteLockFile(lockPath, lf); err != nil {
 		return fmt.Errorf("write lock file: %w", err)
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(cmd.OutOrStdout(), "Resolved %d packages in %.1fs\n", len(result.Decisions), elapsed.Seconds())
-	fmt.Fprintf(cmd.OutOrStdout(), "Wrote poetry.lock\n")
+	fmt.Fprintf(w, "Resolved %d packages in %.1fs\n", len(result.Decisions), elapsed.Seconds())
+	fmt.Fprintf(w, "Wrote poetry.lock\n")
 
 	return nil
+}
+
+func newPyPIClient() (*index.PyPIClient, error) {
+	cacheDir, err := defaultCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	return index.NewPyPIClient(
+		index.WithCache(index.NewCache(cacheDir)),
+	), nil
 }
 
 // indexProvider bridges resolve.Provider ↔ index.PyPIClient.
@@ -130,7 +144,6 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 
 	var deps []resolve.Dependency
 	for _, d := range detail.Dependencies {
-		// Skip extras-only dependencies.
 		if isExtrasOnly(d) {
 			continue
 		}
@@ -150,25 +163,7 @@ func isExtrasOnly(d pep508.Dependency) bool {
 	if d.Markers == nil {
 		return false
 	}
-	s := d.Markers.String()
-	return containsExtraMarker(s)
-}
-
-func containsExtraMarker(s string) bool {
-	return len(s) > 0 && (contains(s, "extra ==") || contains(s, "extra =="))
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && findSubstring(s, substr)
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(d.Markers.String(), "extra ==")
 }
 
 func defaultCacheDir() (string, error) {
