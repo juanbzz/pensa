@@ -1,0 +1,45 @@
+version: '3'
+
+vars:
+  BIN_NAME: goetry
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+
+tasks:
+  build:local:
+    desc: Build goetry and install to ~/.bin
+    cmds:
+      - go build -ldflags "-X github.com/juanbzz/goetry/internal/cli.Version={{.VERSION}}" -o ~/.bin/{{.BIN_NAME}} ./cmd/goetry
+    sources:
+      - ./**/*.go
+    generates:
+      - ~/.bin/{{.BIN_NAME}}
+
+  build:
+    desc: Build goetry binary
+    cmds:
+      - go build -ldflags "-X github.com/juanbzz/goetry/internal/cli.Version={{.VERSION}}" -o ./{{.BIN_NAME}} ./cmd/goetry
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./... -timeout 30s
+
+  test:integration:
+    desc: Run integration tests (requires Docker)
+    env:
+      DOCKER_HOST: unix:///Users/juanolvera/.colima/default/docker.sock
+      TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: /var/run/docker.sock
+    cmds:
+      - go test -tags=integration -timeout 300s -v ./test/integration/
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  check:
+    desc: Run vet + all unit tests
+    cmds:
+      - task: vet
+      - task: test
