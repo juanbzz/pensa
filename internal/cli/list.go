@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/juanbzz/goetry/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/spf13/cobra"
 )
 
@@ -12,8 +12,8 @@ func newListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List packages from the lock file",
 		Long:  "Lists all packages from the lock file in a table.",
-		Example: `  goetry list
-  goetry list --top-level`,
+		Example: `  pensa list
+  pensa list --top-level`,
 		Args: cobra.NoArgs,
 		RunE: runList,
 	}

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanbzz/goetry/internal/index"
-	"github.com/juanbzz/goetry/internal/lockfile"
-	"github.com/juanbzz/goetry/internal/pyproject"
-	"github.com/juanbzz/goetry/internal/resolve"
-	"github.com/juanbzz/goetry/pkg/pep508"
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/internal/index"
+	"github.com/juanbzz/pensa/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/resolve"
+	"github.com/juanbzz/pensa/pkg/pep508"
+	"github.com/juanbzz/pensa/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -171,7 +171,7 @@ func defaultCacheDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("get home directory: %w", err)
 	}
-	return filepath.Join(home, ".cache", "goetry"), nil
+	return filepath.Join(home, ".cache", "pensa"), nil
 }
 
 func computeContentHash(pyprojectPath string) string {

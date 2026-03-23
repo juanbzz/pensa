@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 func TestPyPIClient_GetPackageInfo(t *testing.T) {

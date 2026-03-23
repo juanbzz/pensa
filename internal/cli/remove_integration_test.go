@@ -35,7 +35,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"lock"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry lock failed: %v", err)
+		t.Fatalf("pensa lock failed: %v", err)
 	}
 
 	// Remove requests.
@@ -44,7 +44,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"remove", "requests"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry remove failed: %v", err)
+		t.Fatalf("pensa remove failed: %v", err)
 	}
 
 	out := buf.String()
@@ -95,7 +95,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"lock"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry lock failed: %v", err)
+		t.Fatalf("pensa lock failed: %v", err)
 	}
 
 	// Remove the last dep.
@@ -104,7 +104,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"remove", "certifi"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry remove failed: %v", err)
+		t.Fatalf("pensa remove failed: %v", err)
 	}
 
 	out := buf.String()

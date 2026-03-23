@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/juanbzz/goetry/pkg/pep508"
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/pep508"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // Repository is the interface the resolver uses to fetch package info.

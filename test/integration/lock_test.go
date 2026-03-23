@@ -16,9 +16,9 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 )
 
-func buildGoetry(t *testing.T) string {
+func buildPensa(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "goetry")
+	bin := filepath.Join(t.TempDir(), "pensa")
 
 	// Cross-compile for linux. Detect host arch for matching container arch.
 	goarch := "amd64"
@@ -28,11 +28,11 @@ func buildGoetry(t *testing.T) string {
 
 	// Find the module root (where go.mod is).
 	modRoot := findModuleRoot(t)
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/goetry")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/pensa")
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+goarch, "CGO_ENABLED=0")
 	cmd.Dir = modRoot
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build goetry: %s\n%s", err, out)
+		t.Fatalf("build pensa: %s\n%s", err, out)
 	}
 	return bin
 }
@@ -41,7 +41,7 @@ func setupContainer(t *testing.T) testcontainers.Container {
 	t.Helper()
 	ctx := context.Background()
 
-	goetryBin := buildGoetry(t)
+	pensaBin := buildPensa(t)
 
 	container, err := testcontainers.Run(ctx, "python:3.11-slim",
 		testcontainers.WithCmd("sleep", "infinity"),
@@ -57,14 +57,14 @@ func setupContainer(t *testing.T) testcontainers.Container {
 	// Create work directory.
 	execInContainer(t, container, "mkdir", "-p", "/work")
 
-	// Copy goetry binary into container.
-	if err := container.CopyFileToContainer(ctx, goetryBin, "/usr/local/bin/goetry", 0755); err != nil {
-		t.Fatalf("copy goetry to container: %v", err)
+	// Copy pensa binary into container.
+	if err := container.CopyFileToContainer(ctx, pensaBin, "/usr/local/bin/pensa", 0755); err != nil {
+		t.Fatalf("copy pensa to container: %v", err)
 	}
 
 	// Verify both tools work.
 	execInContainer(t, container, "poetry", "--version")
-	execInContainer(t, container, "goetry", "version")
+	execInContainer(t, container, "pensa", "version")
 
 	return container
 }
@@ -127,7 +127,7 @@ func findModuleRoot(t *testing.T) string {
 
 // --- Tests ---
 
-func TestDropIn_PoetryInitGoetryLock(t *testing.T) {
+func TestDropIn_PoetryInitPensaLock(t *testing.T) {
 	container := setupContainer(t)
 
 	// Poetry creates a project with requests.
@@ -146,28 +146,28 @@ func TestDropIn_PoetryInitGoetryLock(t *testing.T) {
 	// Remove Poetry's lock file, keep pyproject.toml.
 	execInDir(t, container, "/work", "rm poetry.lock")
 
-	// Goetry locks the same project.
-	goetryOutput := execInDir(t, container, "/work", "goetry lock")
-	t.Logf("Goetry output: %s", goetryOutput)
+	// Pensa locks the same project.
+	pensaOutput := execInDir(t, container, "/work", "pensa lock")
+	t.Logf("Pensa output: %s", pensaOutput)
 
-	// Verify goetry created a lock file.
-	goetryLock := execInDir(t, container, "/work", "cat poetry.lock")
-	if !strings.Contains(goetryLock, "requests") {
-		t.Fatal("Goetry lock file missing requests")
+	// Verify pensa created a lock file.
+	pensaLock := execInDir(t, container, "/work", "cat poetry.lock")
+	if !strings.Contains(pensaLock, "requests") {
+		t.Fatal("Pensa lock file missing requests")
 	}
-	goetryPackages := extractPackageNames(goetryLock)
-	t.Logf("Goetry resolved: %v", goetryPackages)
+	pensaPackages := extractPackageNames(pensaLock)
+	t.Logf("Pensa resolved: %v", pensaPackages)
 
-	// Compare: goetry should resolve the same packages as Poetry.
+	// Compare: pensa should resolve the same packages as Poetry.
 	for _, pkg := range poetryPackages {
-		if !sliceContains(goetryPackages, pkg) {
-			t.Errorf("goetry missing package %q that Poetry resolved", pkg)
+		if !sliceContains(pensaPackages, pkg) {
+			t.Errorf("pensa missing package %q that Poetry resolved", pkg)
 		}
 	}
 
-	// Verify goetry printed a resolution summary.
-	if !strings.Contains(goetryOutput, "Resolved") {
-		t.Error("goetry lock didn't print resolution summary")
+	// Verify pensa printed a resolution summary.
+	if !strings.Contains(pensaOutput, "Resolved") {
+		t.Error("pensa lock didn't print resolution summary")
 	}
 }
 
@@ -189,9 +189,9 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 PYEOF`)
 
-	// Goetry locks it.
-	goetryOutput := execInDir(t, container, "/work", "goetry lock")
-	t.Logf("Goetry output: %s", goetryOutput)
+	// Pensa locks it.
+	pensaOutput := execInDir(t, container, "/work", "pensa lock")
+	t.Logf("Pensa output: %s", pensaOutput)
 
 	// Verify lock file contains certifi.
 	lockContent := execInDir(t, container, "/work", "cat poetry.lock")
@@ -203,7 +203,7 @@ PYEOF`)
 	}
 }
 
-func TestDropIn_PoetryAddThenGoetryAdd(t *testing.T) {
+func TestDropIn_PoetryAddThenPensaAdd(t *testing.T) {
 	container := setupContainer(t)
 
 	// Poetry creates a project and adds requests.
@@ -219,37 +219,37 @@ func TestDropIn_PoetryAddThenGoetryAdd(t *testing.T) {
 	}
 	poetryLock := execInDir(t, container, "/work", "cat poetry.lock")
 	poetryPackagesBefore := extractPackageNames(poetryLock)
-	t.Logf("Poetry packages before goetry add: %v", poetryPackagesBefore)
+	t.Logf("Poetry packages before pensa add: %v", poetryPackagesBefore)
 
-	// Goetry adds httpx to the same project.
-	goetryOutput := execInDir(t, container, "/work", "goetry add httpx")
-	t.Logf("Goetry add output: %s", goetryOutput)
+	// Pensa adds httpx to the same project.
+	pensaOutput := execInDir(t, container, "/work", "pensa add httpx")
+	t.Logf("Pensa add output: %s", pensaOutput)
 
 	// Verify pyproject.toml was updated with httpx.
 	updatedPyproject := execInDir(t, container, "/work", "cat pyproject.toml")
 	if !strings.Contains(updatedPyproject, "httpx") {
-		t.Error("pyproject.toml missing httpx after goetry add")
+		t.Error("pyproject.toml missing httpx after pensa add")
 	}
 	// requests should still be there.
 	if !strings.Contains(updatedPyproject, "requests") {
-		t.Error("pyproject.toml lost requests after goetry add")
+		t.Error("pyproject.toml lost requests after pensa add")
 	}
 
 	// Verify poetry.lock was updated.
-	goetryLock := execInDir(t, container, "/work", "cat poetry.lock")
-	goetryPackages := extractPackageNames(goetryLock)
-	t.Logf("Packages after goetry add httpx: %v", goetryPackages)
+	pensaLock := execInDir(t, container, "/work", "cat poetry.lock")
+	pensaPackages := extractPackageNames(pensaLock)
+	t.Logf("Packages after pensa add httpx: %v", pensaPackages)
 
 	// Should have both requests and httpx (plus their transitive deps).
-	if !sliceContains(goetryPackages, "requests") {
+	if !sliceContains(pensaPackages, "requests") {
 		t.Error("lock file missing requests")
 	}
-	if !sliceContains(goetryPackages, "httpx") {
+	if !sliceContains(pensaPackages, "httpx") {
 		t.Error("lock file missing httpx")
 	}
 
-	// Verify goetry output mentions resolution.
-	if !strings.Contains(goetryOutput, "Resolved") {
-		t.Error("goetry add didn't print resolution summary")
+	// Verify pensa output mentions resolution.
+	if !strings.Contains(pensaOutput, "Resolved") {
+		t.Error("pensa add didn't print resolution summary")
 	}
 }

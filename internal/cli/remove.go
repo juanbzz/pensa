@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/juanbzz/goetry/internal/pyproject"
-	"github.com/juanbzz/goetry/pkg/pep508"
+	"github.com/juanbzz/pensa/internal/pyproject"
+	"github.com/juanbzz/pensa/pkg/pep508"
 	"github.com/spf13/cobra"
 )
 
@@ -15,8 +15,8 @@ func newRemoveCmd() *cobra.Command {
 		Use:   "remove [packages...]",
 		Short: "Remove dependencies from the project",
 		Long:  "Removes one or more packages from pyproject.toml, re-locks, and re-installs.",
-		Example: `  goetry remove requests
-  goetry remove requests flask`,
+		Example: `  pensa remove requests
+  pensa remove requests flask`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: runRemove,
 	}

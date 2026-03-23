@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // Marker represents a PEP 508 environment marker expression.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/juanbzz/goetry/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/spf13/cobra"
 )
 
@@ -13,9 +13,9 @@ func newTreeCmd() *cobra.Command {
 		Use:   "tree [package]",
 		Short: "Show the dependency tree",
 		Long:  "Displays packages and their dependencies as a tree.",
-		Example: `  goetry tree
-  goetry tree requests
-  goetry tree --top-level`,
+		Example: `  pensa tree
+  pensa tree requests
+  pensa tree --top-level`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: runTree,
 	}

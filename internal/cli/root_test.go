@@ -45,7 +45,7 @@ func TestVersionCmd_PrintsVersion(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "goetry dev") {
+	if !strings.Contains(output, "pensa dev") {
 		t.Errorf("expected version output, got: %s", output)
 	}
 }
@@ -66,7 +66,7 @@ func TestVersionCmd_PrintsCustomVersion(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "goetry 1.2.3") {
-		t.Errorf("expected 'goetry 1.2.3', got: %s", output)
+	if !strings.Contains(output, "pensa 1.2.3") {
+		t.Errorf("expected 'pensa 1.2.3', got: %s", output)
 	}
 }

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/juanbzz/goetry/pkg/pep508"
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/pep508"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // ParsePoetryDependency converts a Poetry-style dependency entry into a Dependency.

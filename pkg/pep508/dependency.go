@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // Dependency represents a parsed PEP 508 dependency specifier.

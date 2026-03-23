@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/juanbzz/goetry/internal/index"
-	"github.com/juanbzz/goetry/internal/pyproject"
-	"github.com/juanbzz/goetry/pkg/pep508"
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/internal/index"
+	"github.com/juanbzz/pensa/internal/pyproject"
+	"github.com/juanbzz/pensa/pkg/pep508"
+	"github.com/juanbzz/pensa/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -21,9 +21,9 @@ func newAddCmd() *cobra.Command {
 		Long: `Adds one or more packages to pyproject.toml and resolves dependencies.
 
 Specify packages as:
-  goetry add requests              # latest version, caret constraint
-  goetry add requests@^2.28       # explicit constraint
-  goetry add requests flask        # multiple packages`,
+  pensa add requests              # latest version, caret constraint
+  pensa add requests@^2.28       # explicit constraint
+  pensa add requests flask        # multiple packages`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: runAdd,
 	}

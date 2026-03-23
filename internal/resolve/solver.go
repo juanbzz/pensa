@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // sentinel value for conflict detection.

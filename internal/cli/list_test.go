@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juanbzz/goetry/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/lockfile"
 )
 
 func TestList_AllPackages(t *testing.T) {

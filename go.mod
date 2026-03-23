@@ -1,4 +1,4 @@
-module github.com/juanbzz/goetry
+module github.com/juanbzz/pensa
 
 go 1.25.0
 

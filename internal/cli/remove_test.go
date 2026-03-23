@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/juanbzz/goetry/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/pyproject"
 )
 
 func TestRemoveFromProject_PEP621(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/juanbzz/goetry/internal/python"
+	"github.com/juanbzz/pensa/internal/python"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +29,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 
 	venvPath := filepath.Join(dir, ".venv")
 	if !python.VenvExists(venvPath) {
-		return fmt.Errorf("no virtualenv found at %s (run 'goetry install' first)", venvPath)
+		return fmt.Errorf("no virtualenv found at %s (run 'pensa install' first)", venvPath)
 	}
 
 	binDir := filepath.Join(venvPath, "bin")

@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/juanbzz/goetry/pkg/pep508"
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/pep508"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // Compile-time interface check.

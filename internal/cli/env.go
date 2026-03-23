@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/juanbzz/goetry/internal/python"
+	"github.com/juanbzz/pensa/internal/python"
 	"github.com/spf13/cobra"
 )
 
@@ -14,8 +14,8 @@ func newEnvCmd() *cobra.Command {
 		Use:   "env",
 		Short: "Show the virtualenv path",
 		Long:  "Prints the path to the project's virtual environment. Use -v for more detail.",
-		Example: `  goetry env
-  goetry env -v`,
+		Example: `  pensa env
+  pensa env -v`,
 		Args: cobra.NoArgs,
 		RunE: runEnv,
 	}
@@ -31,7 +31,7 @@ func runEnv(cmd *cobra.Command, args []string) error {
 
 	venvPath := filepath.Join(dir, ".venv")
 	if !python.VenvExists(venvPath) {
-		return fmt.Errorf("no virtualenv found. Run \"goetry install\" to create one.")
+		return fmt.Errorf("no virtualenv found. Run \"pensa install\" to create one.")
 	}
 
 	w := cmd.OutOrStdout()
