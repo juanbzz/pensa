@@ -46,7 +46,10 @@ func installProject(w io.Writer, projectDir, venvPath string, py *python.PythonI
 		Editable:   true,
 	})
 	if err != nil {
-		return fmt.Errorf("build editable wheel: %w", err)
+		// Some backends don't support PEP 660 editable installs.
+		// Warn but don't fail — deps are installed, just no editable project.
+		fmt.Fprintf(w, "%s editable install not supported by build backend\n", yellow("Warning:"))
+		return nil
 	}
 
 	if len(result.Files) == 0 {

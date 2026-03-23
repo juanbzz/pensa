@@ -52,8 +52,8 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		issues = append(issues, "poetry.lock is out of date (content hash mismatch). Run \"pensa lock\" to update.")
 	}
 
-	// Check all direct deps are present in lock.
-	deps, err := proj.ResolveDependencies()
+	// Check all direct deps (all groups) are present in lock.
+	allDeps, err := proj.ResolveAllDependencies()
 	if err != nil {
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
@@ -63,9 +63,9 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		lockedNames[normalizeName(p.Name)] = true
 	}
 
-	for _, dep := range deps {
-		if !lockedNames[normalizeName(dep.Name)] {
-			issues = append(issues, fmt.Sprintf("dependency %q is in pyproject.toml but missing from poetry.lock.", dep.Name))
+	for _, gd := range allDeps {
+		if !lockedNames[normalizeName(gd.Dep.Name)] {
+			issues = append(issues, fmt.Sprintf("dependency %q (%s group) is in pyproject.toml but missing from poetry.lock.", gd.Dep.Name, gd.Group))
 		}
 	}
 

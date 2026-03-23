@@ -39,12 +39,12 @@ func runLock(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("read pyproject.toml: %w", err)
 	}
 
-	deps, err := proj.ResolveDependencies()
+	allDeps, err := proj.ResolveAllDependencies()
 	if err != nil {
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
 
-	if len(deps) == 0 {
+	if len(allDeps) == 0 {
 		fmt.Fprintln(cmd.OutOrStdout(), yellow("No dependencies to lock."))
 		return nil
 	}
@@ -57,7 +57,7 @@ func runLock(cmd *cobra.Command, args []string) error {
 func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string, opts lockOptions) error {
 	start := time.Now()
 
-	deps, err := proj.ResolveDependencies()
+	groupedDeps, err := proj.ResolveAllDependencies()
 	if err != nil {
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
@@ -67,14 +67,27 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		return err
 	}
 
-	resolverDeps := make([]resolve.Dependency, 0, len(deps))
-	for _, d := range deps {
-		constraint := d.Constraint
+	// Build resolver deps (all groups resolved together) and track group membership.
+	// A dep can appear in multiple groups — track all of them.
+	depGroups := make(map[string][]string) // normalized name → groups
+	seen := make(map[string]bool)
+	var resolverDeps []resolve.Dependency
+
+	for _, gd := range groupedDeps {
+		normalized := normalizeName(gd.Dep.Name)
+		depGroups[normalized] = append(depGroups[normalized], gd.Group)
+
+		if seen[normalized] {
+			continue // already added to resolver
+		}
+		seen[normalized] = true
+
+		constraint := gd.Dep.Constraint
 		if constraint == nil {
 			constraint = version.AnyConstraint()
 		}
 		resolverDeps = append(resolverDeps, resolve.Dependency{
-			Pkg:        d.Name,
+			Pkg:        gd.Dep.Name,
 			Constraint: constraint,
 		})
 	}
@@ -108,7 +121,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 
 	contentHash := computeContentHash(pyprojectPath)
 
-	lf, err := lockfile.BuildLockFile(result, client, pythonVersions, contentHash)
+	lf, err := lockfile.BuildLockFile(result, client, pythonVersions, contentHash, depGroups)
 	if err != nil {
 		return fmt.Errorf("build lock file: %w", err)
 	}

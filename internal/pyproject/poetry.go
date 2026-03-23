@@ -153,36 +153,88 @@ func formatPythonVersion(v version.Version) string {
 	return fmt.Sprintf("%d", v.Major())
 }
 
-// ResolveDependencies returns a unified list of dependencies from the pyproject.
-// If [project.dependencies] exists, those are the source of truth.
-// [tool.poetry.dependencies] enriches or replaces if project deps are absent.
+// GroupedDependency is a dependency with its group label.
+type GroupedDependency struct {
+	Dep   pep508.Dependency
+	Group string // "main", "dev", "test", etc.
+}
+
+// ResolveDependencies returns main group dependencies only.
+// Backwards-compatible wrapper around ResolveDependenciesForGroups.
 func (p *PyProject) ResolveDependencies() ([]pep508.Dependency, error) {
-	if p.HasProjectSection() && len(p.Project.Dependencies) > 0 {
-		var deps []pep508.Dependency
-		for _, s := range p.Project.Dependencies {
-			d, err := pep508.Parse(s)
-			if err != nil {
-				return nil, fmt.Errorf("parse project dependency: %w", err)
-			}
-			deps = append(deps, d)
+	grouped, err := p.ResolveDependenciesForGroups([]string{"main"})
+	if err != nil {
+		return nil, err
+	}
+	deps := make([]pep508.Dependency, len(grouped))
+	for i, g := range grouped {
+		deps[i] = g.Dep
+	}
+	return deps, nil
+}
+
+// ResolveAllDependencies returns dependencies from all groups (main + all named groups).
+func (p *PyProject) ResolveAllDependencies() ([]GroupedDependency, error) {
+	groups := []string{"main"}
+	if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
+		for name := range p.Tool.Poetry.Groups {
+			groups = append(groups, name)
 		}
-		return deps, nil
+	}
+	return p.ResolveDependenciesForGroups(groups)
+}
+
+// ResolveDependenciesForGroups returns dependencies for the specified groups.
+func (p *PyProject) ResolveDependenciesForGroups(groups []string) ([]GroupedDependency, error) {
+	var result []GroupedDependency
+
+	groupSet := make(map[string]bool, len(groups))
+	for _, g := range groups {
+		groupSet[g] = true
 	}
 
-	if p.HasPoetrySection() && len(p.Tool.Poetry.Dependencies) > 0 {
-		var deps []pep508.Dependency
-		for name, value := range p.Tool.Poetry.Dependencies {
-			if strings.ToLower(name) == "python" {
+	// Main group.
+	if groupSet["main"] {
+		if p.HasProjectSection() && len(p.Project.Dependencies) > 0 {
+			for _, s := range p.Project.Dependencies {
+				d, err := pep508.Parse(s)
+				if err != nil {
+					return nil, fmt.Errorf("parse project dependency: %w", err)
+				}
+				result = append(result, GroupedDependency{Dep: d, Group: "main"})
+			}
+		} else if p.HasPoetrySection() && len(p.Tool.Poetry.Dependencies) > 0 {
+			for name, value := range p.Tool.Poetry.Dependencies {
+				if strings.ToLower(name) == "python" {
+					continue
+				}
+				d, err := ParsePoetryDependency(name, value)
+				if err != nil {
+					return nil, err
+				}
+				result = append(result, GroupedDependency{Dep: d, Group: "main"})
+			}
+		}
+	}
+
+	// Named groups (dev, test, etc.).
+	if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
+		for groupName, group := range p.Tool.Poetry.Groups {
+			if !groupSet[groupName] {
 				continue
 			}
-			d, err := ParsePoetryDependency(name, value)
-			if err != nil {
-				return nil, err
+			for name, value := range group.Dependencies {
+				if strings.ToLower(name) == "python" {
+					continue
+				}
+				d, err := ParsePoetryDependency(name, value)
+				if err != nil {
+					return nil, err
+				}
+				result = append(result, GroupedDependency{Dep: d, Group: groupName})
 			}
-			deps = append(deps, d)
 		}
-		return deps, nil
 	}
 
-	return nil, nil
+	return result, nil
 }
