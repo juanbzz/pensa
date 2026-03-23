@@ -171,6 +171,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Install the project itself in editable mode.
+	if err := installProject(w, dir, venvPath, py); err != nil {
+		return fmt.Errorf("install project: %w", err)
+	}
+
 	elapsed := time.Since(start)
 	fmt.Fprintf(w, "%s in %.1fs\n", green("Synced"), elapsed.Seconds())
 

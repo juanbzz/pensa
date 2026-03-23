@@ -17,6 +17,7 @@ type Options struct {
 	OutputDir  string
 	Wheel      bool
 	Sdist      bool
+	Editable   bool // PEP 660 editable wheel
 }
 
 // Result contains the paths of built artifacts.
@@ -78,6 +79,16 @@ func Build(opts Options) (*Result, error) {
 	backendModule, backendObject := parseBackend(proj.BuildSystem.BuildBackend)
 
 	var result Result
+
+	// Editable wheel (PEP 660).
+	if opts.Editable {
+		file, err := invokeBuildHook(venvPython, opts.ProjectDir, opts.OutputDir, backendModule, backendObject, "build_wheel_for_editable")
+		if err != nil {
+			return nil, fmt.Errorf("build editable: %w", err)
+		}
+		result.Files = append(result.Files, file)
+		return &result, nil
+	}
 
 	// Build sdist.
 	if opts.Sdist {
