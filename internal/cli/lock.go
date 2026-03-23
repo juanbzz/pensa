@@ -92,10 +92,12 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 
 	solver := resolve.NewSolver(solverProvider, proj.Name(), resolverDeps)
 
-	fmt.Fprintf(w, "%s\n", blue("Resolving dependencies..."))
-
-	result, err := solver.Solve()
-	if err != nil {
+	var result *resolve.SolverResult
+	if err := withSpinnerMsg(w, blue("Resolving dependencies..."), "", func() error {
+		var solveErr error
+		result, solveErr = solver.Solve()
+		return solveErr
+	}); err != nil {
 		return fmt.Errorf("resolve: %w", err)
 	}
 

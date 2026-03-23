@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/juanbzz/pensa/internal/installer"
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/python"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 func newInstallCmd() *cobra.Command {
@@ -90,17 +92,51 @@ func installFromLock(w interface{ Write([]byte) (int, error) }) error {
 		return nil
 	}
 
-	// Install only what's needed.
-	fmt.Fprintf(w, "Installing %d packages...\n", len(toInstall))
+	// Phase 1: Download all wheels in parallel.
+	type downloadResult struct {
+		pkg       lockfile.LockedPackage
+		wheelPath string
+	}
+
+	stop := downloadSpinner(w, len(toInstall))
+
+	var mu sync.Mutex
+	var results []downloadResult
+
+	g := new(errgroup.Group)
+	g.SetLimit(4)
+
 	for _, pkg := range toInstall {
-		fmt.Fprintf(w, "  %s %s %s\n", green("Installing"), bold(pkg.Name), dim("("+pkg.Version+")"))
-		if err := ins.InstallPackage(pkg); err != nil {
-			return fmt.Errorf("install %s: %w", pkg.Name, err)
+		pkg := pkg
+		g.Go(func() error {
+			path, err := ins.DownloadPackage(pkg)
+			if err != nil {
+				return fmt.Errorf("download %s: %w", pkg.Name, err)
+			}
+			mu.Lock()
+			results = append(results, downloadResult{pkg, path})
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		stop()
+		return err
+	}
+	stop()
+
+	// Phase 2: Install sequentially from cache.
+	fmt.Fprintf(w, "Installing %d packages...\n", len(results))
+	for _, res := range results {
+		fmt.Fprintf(w, "  %s %s %s\n", green("Installing"), bold(res.pkg.Name), dim("("+res.pkg.Version+")"))
+		if err := ins.InstallFromCache(res.pkg, res.wheelPath); err != nil {
+			return fmt.Errorf("install %s: %w", res.pkg.Name, err)
 		}
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Installed"), len(toInstall), elapsed.Seconds())
+	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Installed"), len(results), elapsed.Seconds())
 
 	return nil
 }

@@ -42,18 +42,26 @@ func (ins *Installer) Install(lf *lockfile.LockFile) error {
 	return nil
 }
 
-// InstallPackage downloads and installs a single package.
+// InstallPackage downloads and installs a single package (download + unpack).
 func (ins *Installer) InstallPackage(pkg lockfile.LockedPackage) error {
-	// Find the best wheel filename from the lock file.
+	wheelPath, err := ins.DownloadPackage(pkg)
+	if err != nil {
+		return err
+	}
+	return ins.InstallFromCache(pkg, wheelPath)
+}
+
+// DownloadPackage downloads a wheel to cache and returns the cached path.
+// Safe for concurrent use — cache writes use atomic rename.
+func (ins *Installer) DownloadPackage(pkg lockfile.LockedPackage) (string, error) {
 	wheelFile := bestWheelFromFiles(pkg.Files)
 	if wheelFile == nil {
-		return fmt.Errorf("no wheel found for %s %s", pkg.Name, pkg.Version)
+		return "", fmt.Errorf("no wheel found for %s %s", pkg.Name, pkg.Version)
 	}
 
-	// Get download URL from PyPI.
 	info, err := ins.client.GetPackageInfo(pkg.Name)
 	if err != nil {
-		return fmt.Errorf("get package info: %w", err)
+		return "", fmt.Errorf("get package info: %w", err)
 	}
 
 	var downloadURL string
@@ -64,22 +72,19 @@ func (ins *Installer) InstallPackage(pkg lockfile.LockedPackage) error {
 		}
 	}
 	if downloadURL == "" {
-		return fmt.Errorf("download URL not found for %s", wheelFile.File)
+		return "", fmt.Errorf("download URL not found for %s", wheelFile.File)
 	}
 
-	// Download wheel to cache.
-	wheelPath, err := ins.downloadWheel(wheelFile.File, downloadURL, wheelFile.Hash)
-	if err != nil {
-		return err
-	}
+	return ins.downloadWheel(wheelFile.File, downloadURL, wheelFile.Hash)
+}
 
-	// Unpack into site-packages.
+// InstallFromCache unpacks a cached wheel into site-packages and installs entry points.
+func (ins *Installer) InstallFromCache(pkg lockfile.LockedPackage, wheelPath string) error {
 	sitePackages := ins.python.SitePackagesDir(ins.venvPath)
 	if err := UnpackWheel(wheelPath, sitePackages); err != nil {
 		return fmt.Errorf("unpack wheel: %w", err)
 	}
 
-	// Install entry points.
 	distInfo, err := FindDistInfo(sitePackages, pkg.Name, pkg.Version)
 	if err == nil {
 		binDir := filepath.Join(ins.venvPath, "bin")
