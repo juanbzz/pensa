@@ -41,7 +41,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		if err := removeFromProject(proj, name); err != nil {
 			return err
 		}
-		fmt.Fprintf(w, "Removing %s\n", name)
+		fmt.Fprintf(w, "%s %s\n", yellow("Removing"), bold(name))
 	}
 
 	if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {

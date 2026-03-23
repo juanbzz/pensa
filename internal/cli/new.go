@@ -91,7 +91,7 @@ func runNew(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Fprintf(w, "Created project %s in %s\n", projectName, targetDir)
+	fmt.Fprintf(w, "%s project %s in %s\n", green("Created"), bold(projectName), targetDir)
 	return nil
 }
 
