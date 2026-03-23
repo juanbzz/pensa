@@ -73,9 +73,26 @@ func installFromLock(w interface{ Write([]byte) (int, error) }) error {
 
 	ins := installer.NewInstaller(client, venvPath, py, cacheDir)
 
-	// Install packages.
-	fmt.Fprintf(w, "Installing %d packages...\n", len(lf.Packages))
+	// Check what's already installed.
+	siteDir := py.SitePackagesDir(venvPath)
+	installed, _ := installer.InstalledPackages(siteDir)
+
+	var toInstall []lockfile.LockedPackage
 	for _, pkg := range lf.Packages {
+		if installed[normalizeName(pkg.Name)] == pkg.Version {
+			continue
+		}
+		toInstall = append(toInstall, pkg)
+	}
+
+	if len(toInstall) == 0 {
+		fmt.Fprintf(w, "All packages up to date.\n")
+		return nil
+	}
+
+	// Install only what's needed.
+	fmt.Fprintf(w, "Installing %d packages...\n", len(toInstall))
+	for _, pkg := range toInstall {
 		fmt.Fprintf(w, "  Installing %s (%s)\n", pkg.Name, pkg.Version)
 		if err := ins.InstallPackage(pkg); err != nil {
 			return fmt.Errorf("install %s: %w", pkg.Name, err)
@@ -83,7 +100,7 @@ func installFromLock(w interface{ Write([]byte) (int, error) }) error {
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(w, "Installed %d packages in %.1fs\n", len(lf.Packages), elapsed.Seconds())
+	fmt.Fprintf(w, "Installed %d packages in %.1fs\n", len(toInstall), elapsed.Seconds())
 
 	return nil
 }
