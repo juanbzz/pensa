@@ -76,12 +76,22 @@ func runNew(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Python package name: hyphens → underscores.
+	pkgName := strings.ReplaceAll(projectName, "-", "_")
+
+	// Create package directory.
+	pkgDir := filepath.Join(targetDir, pkgName)
+	if err := os.MkdirAll(pkgDir, 0755); err != nil {
+		return fmt.Errorf("create package dir: %w", err)
+	}
+
 	// Write files.
 	files := map[string]string{
-		"pyproject.toml": generatePyproject(projectName, requiresPython),
-		"README.md":      fmt.Sprintf("# %s\n", projectName),
-		"main.py":        generateMain(projectName),
-		".gitignore":     pythonGitignore,
+		"pyproject.toml":            generatePyproject(projectName, requiresPython),
+		"README.md":                 fmt.Sprintf("# %s\n", projectName),
+		pkgName + "/__init__.py":    fmt.Sprintf(`"""Top-level package for %s."""`+"\n", projectName),
+		pkgName + "/__main__.py":    generateMain(projectName),
+		".gitignore":                pythonGitignore,
 	}
 
 	for name, content := range files {
@@ -125,6 +135,7 @@ func detectRequiresPython() string {
 }
 
 func generatePyproject(name, requiresPython string) string {
+	pkgName := strings.ReplaceAll(name, "-", "_")
 	return fmt.Sprintf(`[project]
 name = %q
 version = "0.1.0"
@@ -132,19 +143,24 @@ description = ""
 requires-python = %q
 dependencies = []
 
+[project.scripts]
+%s = "%s.__main__:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-`, name, requiresPython)
+`, name, requiresPython, name, pkgName)
 }
 
 func generateMain(name string) string {
 	return fmt.Sprintf(`def main():
+    """Entry point for %s."""
     print("Hello from %s!")
+
 
 if __name__ == "__main__":
     main()
-`, name)
+`, name, name)
 }
 
 const pythonGitignore = `# Python

@@ -23,7 +23,7 @@ func TestNew_CreatesProject(t *testing.T) {
 	projectDir := filepath.Join(dir, "myproject")
 
 	// Check all files exist.
-	for _, name := range []string{"pyproject.toml", "README.md", "main.py", ".gitignore"} {
+	for _, name := range []string{"pyproject.toml", "README.md", "myproject/__init__.py", "myproject/__main__.py", ".gitignore"} {
 		if _, err := os.Stat(filepath.Join(projectDir, name)); err != nil {
 			t.Errorf("missing file: %s", name)
 		}
@@ -149,7 +149,7 @@ func TestNew_CustomName(t *testing.T) {
 	}
 }
 
-func TestNew_MainPyContent(t *testing.T) {
+func TestNew_PackageContent(t *testing.T) {
 	dir := t.TempDir()
 
 	cmd := newRootCmd()
@@ -161,12 +161,25 @@ func TestNew_MainPyContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, _ := os.ReadFile(filepath.Join(dir, "myproject", "main.py"))
+	// Check __main__.py has entry point.
+	data, _ := os.ReadFile(filepath.Join(dir, "myproject", "myproject", "__main__.py"))
 	content := string(data)
 	if !strings.Contains(content, "Hello from myproject") {
-		t.Errorf("main.py should greet with project name, got:\n%s", content)
+		t.Errorf("__main__.py should greet with project name, got:\n%s", content)
 	}
 	if !strings.Contains(content, `if __name__ == "__main__"`) {
-		t.Error("main.py missing __main__ guard")
+		t.Error("__main__.py missing __main__ guard")
+	}
+
+	// Check __init__.py exists.
+	initData, _ := os.ReadFile(filepath.Join(dir, "myproject", "myproject", "__init__.py"))
+	if !strings.Contains(string(initData), "myproject") {
+		t.Error("__init__.py should reference project name")
+	}
+
+	// Check pyproject.toml has scripts entry.
+	pyData, _ := os.ReadFile(filepath.Join(dir, "myproject", "pyproject.toml"))
+	if !strings.Contains(string(pyData), "[project.scripts]") {
+		t.Error("pyproject.toml should have [project.scripts]")
 	}
 }
