@@ -2,6 +2,24 @@ package build
 
 import "testing"
 
+func TestLastLine(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"single line", "single line"},
+		{"line1\nline2\nline3", "line3"},
+		{"Traceback:\n  File foo\nAttributeError: bad", "AttributeError: bad"},
+		{"\n\n", ""},
+	}
+	for _, tt := range tests {
+		got := lastLine(tt.input)
+		if got != tt.want {
+			t.Errorf("lastLine(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestParseBackend(t *testing.T) {
 	tests := []struct {
 		input  string
