@@ -194,14 +194,20 @@ func buildLockedPackage(client *index.PyPIClient, name string, ver version.Versi
 		})
 	}
 
-	// Dependencies (non-extra only).
+	// Dependencies — separate regular deps from extras deps.
 	for _, dep := range detail.Dependencies {
 		if dep.Markers != nil {
-			// Check if it's an extras-only dep.
 			markerStr := dep.Markers.String()
-			if strings.Contains(markerStr, "extra ==") || strings.Contains(markerStr, "extra ==") {
-				// This is an extras dependency, categorize it.
-				// Simple heuristic: extract extra name from marker.
+			if strings.Contains(markerStr, "extra ==") {
+				// Extract extra name and categorize.
+				extraName := extractExtraName(markerStr)
+				if extraName != "" {
+					constraint := "*"
+					if dep.Constraint != nil {
+						constraint = dep.Constraint.String()
+					}
+					pkg.Extras[extraName] = append(pkg.Extras[extraName], dep.Name+" ("+constraint+")")
+				}
 				continue
 			}
 		}
@@ -211,4 +217,20 @@ func buildLockedPackage(client *index.PyPIClient, name string, ver version.Versi
 	}
 
 	return pkg, nil
+}
+
+// extractExtraName extracts the extra name from a marker like `extra == 'security'`.
+func extractExtraName(marker string) string {
+	// Look for extra == 'name' or extra == "name"
+	for _, quote := range []string{"'", `"`} {
+		prefix := "extra == " + quote
+		if i := strings.Index(marker, prefix); i >= 0 {
+			start := i + len(prefix)
+			end := strings.Index(marker[start:], quote)
+			if end >= 0 {
+				return marker[start : start+end]
+			}
+		}
+	}
+	return ""
 }

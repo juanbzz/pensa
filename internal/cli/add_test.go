@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseAddArg_NameOnly(t *testing.T) {
-	name, constraint, err := parseAddArg("requests")
+	name, constraint, extras, err := parseAddArg("requests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -17,10 +17,13 @@ func TestParseAddArg_NameOnly(t *testing.T) {
 	if constraint != "" {
 		t.Errorf("constraint = %q, want empty", constraint)
 	}
+	if len(extras) != 0 {
+		t.Errorf("extras = %v, want empty", extras)
+	}
 }
 
 func TestParseAddArg_WithConstraint(t *testing.T) {
-	name, constraint, err := parseAddArg("requests@^2.28")
+	name, constraint, _, err := parseAddArg("requests@^2.28")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +36,7 @@ func TestParseAddArg_WithConstraint(t *testing.T) {
 }
 
 func TestParseAddArg_WithVersionRange(t *testing.T) {
-	name, constraint, err := parseAddArg("flask@>=2.0,<3.0")
+	name, constraint, _, err := parseAddArg("flask@>=2.0,<3.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +48,37 @@ func TestParseAddArg_WithVersionRange(t *testing.T) {
 	}
 }
 
+func TestParseAddArg_WithExtras(t *testing.T) {
+	name, constraint, extras, err := parseAddArg("requests[security]@^2.28")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "requests" {
+		t.Errorf("name = %q", name)
+	}
+	if constraint != "^2.28" {
+		t.Errorf("constraint = %q", constraint)
+	}
+	if len(extras) != 1 || extras[0] != "security" {
+		t.Errorf("extras = %v, want [security]", extras)
+	}
+}
+
+func TestParseAddArg_MultipleExtras(t *testing.T) {
+	name, _, extras, err := parseAddArg("black[d,jupyter]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "black" {
+		t.Errorf("name = %q", name)
+	}
+	if len(extras) != 2 || extras[0] != "d" || extras[1] != "jupyter" {
+		t.Errorf("extras = %v, want [d jupyter]", extras)
+	}
+}
+
 func TestParseAddArg_Empty(t *testing.T) {
-	_, _, err := parseAddArg("")
+	_, _, _, err := parseAddArg("")
 	if err == nil {
 		t.Error("expected error for empty arg")
 	}
