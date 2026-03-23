@@ -67,15 +67,20 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		return err
 	}
 
-	// Build resolver deps (all groups resolved together) and track group membership.
-	// A dep can appear in multiple groups — track all of them.
-	depGroups := make(map[string][]string) // normalized name → groups
+	// Build resolver deps (all groups resolved together) and track group membership + extras.
+	depGroups := make(map[string][]string)   // normalized name → groups
+	depExtras := make(map[string][]string)   // normalized name → requested extras
 	seen := make(map[string]bool)
 	var resolverDeps []resolve.Dependency
 
 	for _, gd := range groupedDeps {
 		normalized := normalizeName(gd.Dep.Name)
 		depGroups[normalized] = append(depGroups[normalized], gd.Group)
+
+		// Track requested extras.
+		if len(gd.Dep.Extras) > 0 {
+			depExtras[normalized] = append(depExtras[normalized], gd.Dep.Extras...)
+		}
 
 		if seen[normalized] {
 			continue // already added to resolver
@@ -92,7 +97,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		})
 	}
 
-	baseProvider := &indexProvider{client: client}
+	baseProvider := &indexProvider{client: client, requestedExtras: depExtras}
 
 	// Wrap provider to prefer locked versions unless upgrading.
 	var solverProvider resolve.Provider = baseProvider
@@ -150,7 +155,8 @@ func newPyPIClient() (*index.PyPIClient, error) {
 
 // indexProvider bridges resolve.Provider ↔ index.PyPIClient.
 type indexProvider struct {
-	client *index.PyPIClient
+	client          *index.PyPIClient
+	requestedExtras map[string][]string // normalized pkg name → requested extras
 }
 
 func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
@@ -158,7 +164,19 @@ func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
 	if err != nil {
 		return nil, err
 	}
-	return info.Versions(), nil
+	// Filter out pre-release versions by default.
+	allVersions := info.Versions()
+	var stable []version.Version
+	for _, v := range allVersions {
+		if v.IsStable() {
+			stable = append(stable, v)
+		}
+	}
+	// Fall back to all versions if no stable versions exist.
+	if len(stable) == 0 {
+		return allVersions, nil
+	}
+	return stable, nil
 }
 
 func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve.Dependency, error) {
@@ -167,10 +185,16 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 		return nil, err
 	}
 
+	// Get requested extras for this package.
+	extras := p.requestedExtras[normalizeName(pkg)]
+
 	var deps []resolve.Dependency
 	for _, d := range detail.Dependencies {
 		if isExtrasOnly(d) {
-			continue
+			// Include this dep only if its extra was requested.
+			if !isRequestedExtra(d, extras) {
+				continue
+			}
 		}
 		constraint := d.Constraint
 		if constraint == nil {
@@ -189,6 +213,22 @@ func isExtrasOnly(d pep508.Dependency) bool {
 		return false
 	}
 	return strings.Contains(d.Markers.String(), "extra ==")
+}
+
+// isRequestedExtra checks if a dep's extra marker matches any of the requested extras.
+// Marker format: `extra == 'security'` or `extra == "security"`
+func isRequestedExtra(d pep508.Dependency, requestedExtras []string) bool {
+	if d.Markers == nil || len(requestedExtras) == 0 {
+		return false
+	}
+	markerStr := d.Markers.String()
+	for _, extra := range requestedExtras {
+		if strings.Contains(markerStr, "extra == '"+extra+"'") ||
+			strings.Contains(markerStr, `extra == "`+extra+`"`) {
+			return true
+		}
+	}
+	return false
 }
 
 func defaultCacheDir() (string, error) {

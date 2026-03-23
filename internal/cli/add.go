@@ -52,7 +52,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	group, _ := cmd.Flags().GetString("group")
 
 	for _, arg := range args {
-		name, constraintStr, err := parseAddArg(arg)
+		name, constraintStr, extras, err := parseAddArg(arg)
 		if err != nil {
 			return err
 		}
@@ -69,16 +69,20 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		if group != "" {
-			addToGroup(proj, name, constraintStr, group)
+			addToGroupWithExtras(proj, name, constraintStr, group, extras)
 		} else {
-			addToProject(proj, name, constraintStr)
+			addToProjectWithExtras(proj, name, constraintStr, extras)
 		}
 
+		displayName := name
+		if len(extras) > 0 {
+			displayName = name + "[" + strings.Join(extras, ",") + "]"
+		}
 		groupLabel := ""
 		if group != "" {
 			groupLabel = " " + dim("("+group+" group)")
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s%s\n", green("Adding"), bold(name), dim("("+constraintStr+")"), groupLabel)
+		fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s%s\n", green("Adding"), bold(displayName), dim("("+constraintStr+")"), groupLabel)
 	}
 
 	// Write updated pyproject.toml.
@@ -101,16 +105,38 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	return installFromLock(cmd.OutOrStdout(), true, nil)
 }
 
-// parseAddArg parses "name" or "name@constraint" into components.
-func parseAddArg(s string) (name, constraint string, err error) {
+// parseAddArg parses "name", "name@constraint", or "name[extras]@constraint".
+func parseAddArg(s string) (name, constraint string, extras []string, err error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return "", "", fmt.Errorf("empty package name")
+		return "", "", nil, fmt.Errorf("empty package name")
 	}
+
+	// Split on @ for constraint.
 	if i := strings.Index(s, "@"); i >= 0 {
-		return s[:i], s[i+1:], nil
+		name = s[:i]
+		constraint = s[i+1:]
+	} else {
+		name = s
 	}
-	return s, "", nil
+
+	// Extract extras from name: requests[security,tests] → requests, [security, tests]
+	if bracketStart := strings.Index(name, "["); bracketStart >= 0 {
+		bracketEnd := strings.Index(name, "]")
+		if bracketEnd < 0 {
+			return "", "", nil, fmt.Errorf("unclosed bracket in %q", s)
+		}
+		extrasStr := name[bracketStart+1 : bracketEnd]
+		name = name[:bracketStart]
+		for _, e := range strings.Split(extrasStr, ",") {
+			e = strings.TrimSpace(e)
+			if e != "" {
+				extras = append(extras, e)
+			}
+		}
+	}
+
+	return name, constraint, extras, nil
 }
 
 // getLatestVersion queries PyPI for the latest stable version of a package.
@@ -210,6 +236,70 @@ func addToGroup(proj *pyproject.PyProject, name, constraint, group string) {
 		g.Dependencies = make(map[string]interface{})
 	}
 	g.Dependencies[name] = constraint
+	proj.Tool.Poetry.Groups[group] = g
+}
+
+// addToProjectWithExtras adds a dependency with optional extras.
+func addToProjectWithExtras(proj *pyproject.PyProject, name, constraint string, extras []string) {
+	if len(extras) == 0 {
+		addToProject(proj, name, constraint)
+		return
+	}
+
+	if proj.HasProjectSection() {
+		// PEP 621: include extras in dep string: requests[security]>=2.28,<3
+		extrasStr := "[" + strings.Join(extras, ",") + "]"
+		depStr := name + extrasStr + toPEP508(constraint)
+		sanitizePEP621Deps(proj)
+		for i, existing := range proj.Project.Dependencies {
+			dep, err := pep508.Parse(existing)
+			if err == nil && dep.Name == name {
+				proj.Project.Dependencies[i] = depStr
+				return
+			}
+		}
+		proj.Project.Dependencies = append(proj.Project.Dependencies, depStr)
+	} else if proj.HasPoetrySection() {
+		// Poetry table format: {version = "^2.28", extras = ["security"]}
+		if proj.Tool.Poetry.Dependencies == nil {
+			proj.Tool.Poetry.Dependencies = make(map[string]interface{})
+		}
+		proj.Tool.Poetry.Dependencies[name] = map[string]interface{}{
+			"version": constraint,
+			"extras":  extras,
+		}
+	} else {
+		if proj.Project == nil {
+			proj.Project = &pyproject.ProjectTable{Name: proj.Name()}
+		}
+		extrasStr := "[" + strings.Join(extras, ",") + "]"
+		proj.Project.Dependencies = append(proj.Project.Dependencies, name+extrasStr+toPEP508(constraint))
+	}
+}
+
+// addToGroupWithExtras adds a dependency with optional extras to a named group.
+func addToGroupWithExtras(proj *pyproject.PyProject, name, constraint, group string, extras []string) {
+	if len(extras) == 0 {
+		addToGroup(proj, name, constraint, group)
+		return
+	}
+	if proj.Tool == nil {
+		proj.Tool = &pyproject.ToolTable{}
+	}
+	if proj.Tool.Poetry == nil {
+		proj.Tool.Poetry = &pyproject.PoetryTable{}
+	}
+	if proj.Tool.Poetry.Groups == nil {
+		proj.Tool.Poetry.Groups = make(map[string]pyproject.PoetryGroup)
+	}
+	g := proj.Tool.Poetry.Groups[group]
+	if g.Dependencies == nil {
+		g.Dependencies = make(map[string]interface{})
+	}
+	g.Dependencies[name] = map[string]interface{}{
+		"version": constraint,
+		"extras":  extras,
+	}
 	proj.Tool.Poetry.Groups[group] = g
 }
 
