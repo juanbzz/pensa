@@ -130,6 +130,10 @@ func addToProject(proj *pyproject.PyProject, name, constraint string) {
 	if proj.HasProjectSection() {
 		// PEP 621: convert Poetry constraint (^, ~) to PEP 508 range.
 		depStr := name + toPEP508(constraint)
+
+		// Sanitize all existing deps to PEP 508 (fix any previously written caret/tilde syntax).
+		sanitizePEP621Deps(proj)
+
 		// Check if already exists — update if so.
 		for i, existing := range proj.Project.Dependencies {
 			dep, err := pep508.Parse(existing)
@@ -153,6 +157,25 @@ func addToProject(proj *pyproject.PyProject, name, constraint string) {
 			}
 		}
 		proj.Project.Dependencies = append(proj.Project.Dependencies, name+toPEP508(constraint))
+	}
+}
+
+// sanitizePEP621Deps converts any Poetry-style constraints in [project.dependencies]
+// to valid PEP 508 format. Fixes deps that were written with ^/~ syntax.
+func sanitizePEP621Deps(proj *pyproject.PyProject) {
+	if proj.Project == nil {
+		return
+	}
+	for i, dep := range proj.Project.Dependencies {
+		// Try to parse as PEP 508. If it fails, it might have caret/tilde syntax.
+		if _, err := pep508.Parse(dep); err != nil {
+			// Extract name and constraint, convert constraint.
+			name := depNameFromPEP508(dep)
+			constraint := strings.TrimSpace(dep[len(name):])
+			if constraint != "" {
+				proj.Project.Dependencies[i] = name + toPEP508(constraint)
+			}
+		}
 	}
 }
 
