@@ -28,7 +28,7 @@ func TestRootCmd_HelpContainsDescription(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "fast Python package manager") {
+	if !strings.Contains(output, "fast enough Python package and project manager") {
 		t.Errorf("expected help to contain description, got:\n%s", output)
 	}
 }
