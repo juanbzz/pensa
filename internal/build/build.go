@@ -59,13 +59,11 @@ func Build(opts Options) (*Result, error) {
 
 	venvPython := filepath.Join(buildVenv, "bin", "python")
 
-	// Install build dependencies.
+	// Install build dependencies (suppress pip output).
 	if len(proj.BuildSystem.Requires) > 0 {
-		args := append([]string{"-m", "pip", "install", "--quiet"}, proj.BuildSystem.Requires...)
+		args := append([]string{"-m", "pip", "install", "--quiet", "--disable-pip-version-check"}, proj.BuildSystem.Requires...)
 		cmd := exec.Command(venvPython, args...)
 		cmd.Dir = opts.ProjectDir
-		cmd.Stdout = os.Stderr // pip output to stderr
-		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
 			return nil, fmt.Errorf("install build dependencies: %w", err)
 		}
