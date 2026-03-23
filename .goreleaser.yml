@@ -1,0 +1,47 @@
+version: 2
+project_name: pensa
+
+builds:
+  - main: ./cmd/pensa
+    binary: pensa
+    ldflags:
+      - -s -w
+      - -X github.com/juanbzz/pensa/internal/cli.Version={{.Version}}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true
+  # Release notes are written by humans in CHANGELOG.md.
+  # Use: goreleaser release --release-notes CHANGELOG.md
+  # Or edit the GitHub release after publishing.
+
+brews:
+  - repository:
+      owner: juanbzz
+      name: homebrew-tap
+    homepage: https://github.com/juanbzz/pensa
+    description: "A fast enough Python package and project manager, written in Go"
+    license: MIT
+    install: |
+      bin.install "pensa"
+    test: |
+      system "#{bin}/pensa", "version"

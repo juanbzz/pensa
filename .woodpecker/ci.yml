@@ -1,0 +1,19 @@
+when:
+  - event: [push, pull_request]
+
+steps:
+  - name: vet
+    image: golang:1.25
+    commands:
+      - go vet ./...
+
+  - name: test
+    image: golang:1.25
+    commands:
+      - go test -timeout 60s ./...
+
+  - name: integration
+    image: golang:1.25
+    commands:
+      - apt-get update && apt-get install -y python3 python3-pip python3-venv
+      - go test -tags integration -timeout 300s ./internal/cli/ ./internal/build/

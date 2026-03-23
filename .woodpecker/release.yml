@@ -1,0 +1,39 @@
+when:
+  - event: tag
+
+steps:
+  - name: build
+    image: golang:1.25
+    commands:
+      - |
+        VERSION=${CI_COMMIT_TAG}
+        mkdir -p dist
+
+        for PAIR in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+          OS=${PAIR%/*}
+          ARCH=${PAIR#*/}
+          echo "Building ${OS}/${ARCH}..."
+          GOOS=$OS GOARCH=$ARCH go build \
+            -ldflags "-s -w -X github.com/juanbzz/pensa/internal/cli.Version=$VERSION" \
+            -o dist/pensa_${VERSION}_${OS}_${ARCH} ./cmd/pensa
+        done
+
+        # Windows
+        GOOS=windows GOARCH=amd64 go build \
+          -ldflags "-s -w -X github.com/juanbzz/pensa/internal/cli.Version=$VERSION" \
+          -o dist/pensa_${VERSION}_windows_amd64.exe ./cmd/pensa
+
+        cd dist && sha256sum * > checksums.txt
+
+  - name: release
+    image: woodpeckerci/plugin-gitea-release
+    settings:
+      base_url:
+        from_secret: gitea_url
+      api_key:
+        from_secret: gitea_token
+      files:
+        - dist/*
+      title: ${CI_COMMIT_TAG}
+    when:
+      - event: tag
