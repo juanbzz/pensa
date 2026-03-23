@@ -1,6 +1,7 @@
 package build
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,12 @@ import (
 	"github.com/juanbzz/pensa/internal/python"
 	"github.com/juanbzz/pensa/internal/pyproject"
 )
+
+// lastLine returns the last non-empty line from a string (for clean error messages).
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return lines[len(lines)-1]
+}
 
 // Options controls what to build.
 type Options struct {
@@ -82,7 +89,15 @@ func Build(opts Options) (*Result, error) {
 
 	// Editable wheel (PEP 660).
 	if opts.Editable {
-		file, err := invokeBuildHook(venvPython, opts.ProjectDir, opts.OutputDir, backendModule, backendObject, "build_wheel_for_editable")
+		// Get extra build deps for editable installs (e.g., hatchling needs 'editables').
+		if extraDeps, err := getEditableBuildDeps(venvPython, opts.ProjectDir, backendModule, backendObject); err == nil && len(extraDeps) > 0 {
+			args := append([]string{"-m", "pip", "install", "--quiet", "--disable-pip-version-check"}, extraDeps...)
+			installCmd := exec.Command(venvPython, args...)
+			installCmd.Dir = opts.ProjectDir
+			installCmd.Run() // best-effort
+		}
+
+		file, err := invokeBuildHook(venvPython, opts.ProjectDir, opts.OutputDir, backendModule, backendObject, "build_editable")
 		if err != nil {
 			return nil, fmt.Errorf("build editable: %w", err)
 		}
@@ -151,10 +166,17 @@ print(result)
 
 	cmd := exec.Command(pythonPath, "-c", script)
 	cmd.Dir = projectDir
-	cmd.Stderr = os.Stderr
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 
 	out, err := cmd.Output()
 	if err != nil {
+		// Include stderr in error for debugging, but don't print it raw.
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg != "" {
+			return "", fmt.Errorf("invoke %s: %s", hook, lastLine(errMsg))
+		}
 		return "", fmt.Errorf("invoke %s: %w", hook, err)
 	}
 
@@ -164,4 +186,55 @@ print(result)
 	}
 
 	return filepath.Join(absOutput, filename), nil
+}
+
+// getEditableBuildDeps calls get_requires_for_build_editable on the backend
+// to discover extra dependencies needed for editable builds.
+func getEditableBuildDeps(pythonPath, projectDir, module, object string) ([]string, error) {
+	var script string
+	if object == "" {
+		script = fmt.Sprintf(`
+import importlib, json
+mod = importlib.import_module(%q)
+if hasattr(mod, 'get_requires_for_build_editable'):
+    print(json.dumps(mod.get_requires_for_build_editable()))
+else:
+    print('[]')
+`, module)
+	} else {
+		script = fmt.Sprintf(`
+import importlib, json
+mod = importlib.import_module(%q)
+obj = getattr(mod, %q)
+if hasattr(obj, 'get_requires_for_build_editable'):
+    print(json.dumps(obj.get_requires_for_build_editable()))
+else:
+    print('[]')
+`, module, object)
+	}
+
+	cmd := exec.Command(pythonPath, "-c", script)
+	cmd.Dir = projectDir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse JSON list of strings.
+	result := strings.TrimSpace(string(out))
+	if result == "[]" || result == "" {
+		return nil, nil
+	}
+
+	// Simple JSON array parse — strip brackets, split by comma, trim quotes.
+	result = strings.Trim(result, "[]")
+	var deps []string
+	for _, s := range strings.Split(result, ",") {
+		s = strings.TrimSpace(s)
+		s = strings.Trim(s, `"`)
+		if s != "" {
+			deps = append(deps, s)
+		}
+	}
+	return deps, nil
 }
