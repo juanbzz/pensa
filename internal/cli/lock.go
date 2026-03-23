@@ -45,7 +45,7 @@ func runLock(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(deps) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No dependencies to lock.")
+		fmt.Fprintln(cmd.OutOrStdout(), yellow("No dependencies to lock."))
 		return nil
 	}
 
@@ -82,7 +82,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	provider := &indexProvider{client: client}
 	solver := resolve.NewSolver(provider, proj.Name(), resolverDeps)
 
-	fmt.Fprintf(w, "Resolving dependencies...\n")
+	fmt.Fprintf(w, "%s\n", blue("Resolving dependencies..."))
 
 	result, err := solver.Solve()
 	if err != nil {
@@ -107,8 +107,8 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(w, "Resolved %d packages in %.1fs\n", len(result.Decisions), elapsed.Seconds())
-	fmt.Fprintf(w, "Wrote poetry.lock\n")
+	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Resolved"), len(result.Decisions), elapsed.Seconds())
+	fmt.Fprintf(w, "%s poetry.lock\n", green("Wrote"))
 
 	return nil
 }

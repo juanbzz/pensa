@@ -60,11 +60,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("find latest version of %s: %w", name, err)
 			}
 			constraintStr = fmt.Sprintf("^%s", latest)
-			fmt.Fprintf(cmd.OutOrStdout(), "Using version %s for %s\n", constraintStr, name)
+			fmt.Fprintf(cmd.OutOrStdout(), "Using version %s for %s\n", bold(constraintStr), bold(name))
 		}
 
 		addToProject(proj, name, constraintStr)
-		fmt.Fprintf(cmd.OutOrStdout(), "Adding %s (%s)\n", name, constraintStr)
+		fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s\n", green("Adding"), bold(name), dim("("+constraintStr+")"))
 	}
 
 	// Write updated pyproject.toml.

@@ -55,7 +55,7 @@ func installFromLock(w interface{ Write([]byte) (int, error) }) error {
 	// Create venv if it doesn't exist.
 	venvPath := filepath.Join(dir, ".venv")
 	if !python.VenvExists(venvPath) {
-		fmt.Fprintf(w, "Creating virtualenv using Python %s\n", py.Version)
+		fmt.Fprintf(w, "%s using Python %s\n", blue("Creating virtualenv"), bold(py.Version))
 		if err := python.CreateVenv(venvPath, py); err != nil {
 			return fmt.Errorf("create venv: %w", err)
 		}
@@ -86,21 +86,21 @@ func installFromLock(w interface{ Write([]byte) (int, error) }) error {
 	}
 
 	if len(toInstall) == 0 {
-		fmt.Fprintf(w, "All packages up to date.\n")
+		fmt.Fprintf(w, "%s\n", green("All packages up to date."))
 		return nil
 	}
 
 	// Install only what's needed.
 	fmt.Fprintf(w, "Installing %d packages...\n", len(toInstall))
 	for _, pkg := range toInstall {
-		fmt.Fprintf(w, "  Installing %s (%s)\n", pkg.Name, pkg.Version)
+		fmt.Fprintf(w, "  %s %s %s\n", green("Installing"), bold(pkg.Name), dim("("+pkg.Version+")"))
 		if err := ins.InstallPackage(pkg); err != nil {
 			return fmt.Errorf("install %s: %w", pkg.Name, err)
 		}
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(w, "Installed %d packages in %.1fs\n", len(toInstall), elapsed.Seconds())
+	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Installed"), len(toInstall), elapsed.Seconds())
 
 	return nil
 }
