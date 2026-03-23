@@ -20,6 +20,7 @@ type Installer struct {
 	venvPath string
 	python   *python.PythonInfo
 	cacheDir string
+	platform *PlatformTags
 }
 
 // NewInstaller creates a new package installer.
@@ -29,6 +30,7 @@ func NewInstaller(client *index.PyPIClient, venvPath string, py *python.PythonIn
 		venvPath: venvPath,
 		python:   py,
 		cacheDir: cacheDir,
+		platform: NewPlatformTags(py),
 	}
 }
 
@@ -54,7 +56,7 @@ func (ins *Installer) InstallPackage(pkg lockfile.LockedPackage) error {
 // DownloadPackage downloads a wheel to cache and returns the cached path.
 // Safe for concurrent use — cache writes use atomic rename.
 func (ins *Installer) DownloadPackage(pkg lockfile.LockedPackage) (string, error) {
-	wheelFile := bestWheelFromFiles(pkg.Files)
+	wheelFile := bestWheelFromFiles(pkg.Files, ins.platform)
 	if wheelFile == nil {
 		return "", fmt.Errorf("no wheel found for %s %s", pkg.Name, pkg.Version)
 	}
@@ -95,18 +97,19 @@ func (ins *Installer) InstallFromCache(pkg lockfile.LockedPackage, wheelPath str
 	return nil
 }
 
-func bestWheelFromFiles(files []lockfile.PackageFile) *lockfile.PackageFile {
+func bestWheelFromFiles(files []lockfile.PackageFile, plat *PlatformTags) *lockfile.PackageFile {
 	var best *lockfile.PackageFile
+	bestScore := -1
 	for i, f := range files {
 		if !strings.HasSuffix(f.File, ".whl") {
 			continue
 		}
-		if best == nil {
-			best = &files[i]
+		score := plat.Score(f.File)
+		if score < 0 {
 			continue
 		}
-		// Prefer py3-none-any wheels.
-		if strings.Contains(f.File, "-py3-none-any") {
+		if bestScore < 0 || score < bestScore {
+			bestScore = score
 			best = &files[i]
 		}
 	}
