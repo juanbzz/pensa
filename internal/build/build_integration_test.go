@@ -103,6 +103,74 @@ build-backend = "hatchling.build"
 	}
 }
 
+func TestBuild_Editable(t *testing.T) {
+	dir := t.TempDir()
+
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "testpkg"
+version = "0.1.0"
+
+[project.scripts]
+testpkg = "testpkg.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+
+	pkgDir := filepath.Join(dir, "testpkg")
+	os.MkdirAll(pkgDir, 0755)
+	os.WriteFile(filepath.Join(pkgDir, "__init__.py"), []byte(""), 0644)
+	os.WriteFile(filepath.Join(pkgDir, "__main__.py"), []byte("def main(): print('hello')\n"), 0644)
+
+	result, err := Build(Options{
+		ProjectDir: dir,
+		OutputDir:  filepath.Join(dir, "dist"),
+		Editable:   true,
+	})
+	if err != nil {
+		t.Fatalf("editable build failed: %v", err)
+	}
+
+	if len(result.Files) != 1 {
+		t.Fatalf("expected 1 editable wheel, got %d", len(result.Files))
+	}
+	if !strings.HasSuffix(filepath.Base(result.Files[0]), ".whl") {
+		t.Errorf("expected .whl, got %s", result.Files[0])
+	}
+
+	// Verify file exists.
+	if _, err := os.Stat(result.Files[0]); err != nil {
+		t.Errorf("editable wheel doesn't exist: %v", err)
+	}
+}
+
+func TestBuild_EditableNoPackage(t *testing.T) {
+	dir := t.TempDir()
+
+	// Project with build-system but no actual package directory.
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "testpkg"
+version = "0.1.0"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+
+	// No testpkg/ directory — editable build should fail.
+	_, err := Build(Options{
+		ProjectDir: dir,
+		OutputDir:  filepath.Join(dir, "dist"),
+		Editable:   true,
+	})
+	if err == nil {
+		t.Fatal("expected error when no package directory exists for editable build")
+	}
+}
+
 func TestBuild_NoBuildSystem(t *testing.T) {
 	dir := t.TempDir()
 
