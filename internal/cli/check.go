@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juanbzz/goetry/internal/lockfile"
-	"github.com/juanbzz/goetry/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/pyproject"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +16,7 @@ func newCheckCmd() *cobra.Command {
 		Use:   "check",
 		Short: "Validate project consistency",
 		Long:  "Checks that pyproject.toml and poetry.lock are consistent.",
-		Example: `  goetry check`,
+		Example: `  pensa check`,
 		Args: cobra.NoArgs,
 		RunE: runCheck,
 	}
@@ -41,7 +41,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	// Read poetry.lock.
 	lf, err := lockfile.ReadLockFile(lockPath)
 	if err != nil {
-		return fmt.Errorf("read poetry.lock: %w (run 'goetry lock' first)", err)
+		return fmt.Errorf("read poetry.lock: %w (run 'pensa lock' first)", err)
 	}
 
 	var issues []string
@@ -49,7 +49,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	// Check content hash.
 	currentHash := computeContentHash(pyprojectPath)
 	if currentHash != "" && lf.Metadata.ContentHash != "" && currentHash != lf.Metadata.ContentHash {
-		issues = append(issues, "poetry.lock is out of date (content hash mismatch). Run \"goetry lock\" to update.")
+		issues = append(issues, "poetry.lock is out of date (content hash mismatch). Run \"pensa lock\" to update.")
 	}
 
 	// Check all direct deps are present in lock.

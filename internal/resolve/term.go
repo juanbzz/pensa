@@ -3,7 +3,7 @@ package resolve
 import (
 	"fmt"
 
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // SetRelation describes the relationship between two sets of versions.

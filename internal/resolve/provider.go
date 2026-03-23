@@ -1,7 +1,7 @@
 package resolve
 
 import (
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // Dependency represents a package dependency for the resolver.

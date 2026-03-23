@@ -1,24 +1,24 @@
 version: '3'
 
 vars:
-  BIN_NAME: goetry
+  BIN_NAME: pensa
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
 
 tasks:
   build:local:
-    desc: Build goetry and install to ~/.bin
+    desc: Build pensa and install to ~/.bin
     cmds:
-      - go build -ldflags "-X github.com/juanbzz/goetry/internal/cli.Version={{.VERSION}}" -o ~/.bin/{{.BIN_NAME}} ./cmd/goetry
+      - go build -ldflags "-X github.com/juanbzz/pensa/internal/cli.Version={{.VERSION}}" -o ~/.bin/{{.BIN_NAME}} ./cmd/pensa
     sources:
       - ./**/*.go
     generates:
       - ~/.bin/{{.BIN_NAME}}
 
   build:
-    desc: Build goetry binary
+    desc: Build pensa binary
     cmds:
-      - go build -ldflags "-X github.com/juanbzz/goetry/internal/cli.Version={{.VERSION}}" -o ./{{.BIN_NAME}} ./cmd/goetry
+      - go build -ldflags "-X github.com/juanbzz/pensa/internal/cli.Version={{.VERSION}}" -o ./{{.BIN_NAME}} ./cmd/pensa
 
   test:
     desc: Run unit tests

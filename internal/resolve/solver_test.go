@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // --- Mock Provider ---

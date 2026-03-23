@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/juanbzz/goetry/internal/lockfile"
-	"github.com/juanbzz/goetry/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/pyproject"
 )
 
 // normalizeName lowercases and replaces underscores with hyphens for comparison.
@@ -25,7 +25,7 @@ func readLockFileFromCwd() (*lockfile.LockFile, error) {
 
 	lf, err := lockfile.ReadLockFile(filepath.Join(dir, "poetry.lock"))
 	if err != nil {
-		return nil, fmt.Errorf("read poetry.lock: %w (run 'goetry lock' first)", err)
+		return nil, fmt.Errorf("read poetry.lock: %w (run 'pensa lock' first)", err)
 	}
 	return lf, nil
 }

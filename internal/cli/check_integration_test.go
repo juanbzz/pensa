@@ -33,7 +33,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"lock"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry lock failed: %v", err)
+		t.Fatalf("pensa lock failed: %v", err)
 	}
 
 	// Check should pass.
@@ -42,7 +42,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"check"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry check should pass after lock: %v", err)
+		t.Fatalf("pensa check should pass after lock: %v", err)
 	}
 
 	if !strings.Contains(buf.String(), "All checks passed") {
@@ -74,7 +74,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"lock"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry lock failed: %v", err)
+		t.Fatalf("pensa lock failed: %v", err)
 	}
 
 	// Modify pyproject.toml without re-locking.
@@ -99,7 +99,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetArgs([]string{"check"})
 	err := cmd.Execute()
 	if err == nil {
-		t.Fatal("goetry check should fail after pyproject change")
+		t.Fatal("pensa check should fail after pyproject change")
 	}
 
 	if !strings.Contains(buf.String(), "content hash mismatch") {
@@ -131,7 +131,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"lock"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry lock failed: %v", err)
+		t.Fatalf("pensa lock failed: %v", err)
 	}
 
 	// Add a new dep without re-locking.
@@ -157,7 +157,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetArgs([]string{"check"})
 	err := cmd.Execute()
 	if err == nil {
-		t.Fatal("goetry check should fail with missing dep")
+		t.Fatal("pensa check should fail with missing dep")
 	}
 
 	out := buf.String()

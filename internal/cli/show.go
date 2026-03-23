@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/juanbzz/goetry/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/spf13/cobra"
 )
 
@@ -13,8 +13,8 @@ func newShowCmd() *cobra.Command {
 		Use:   "show <package>",
 		Short: "Show details about a package",
 		Long:  "Shows detailed information about a specific package from the lock file.",
-		Example: `  goetry show requests
-  goetry show charset-normalizer`,
+		Example: `  pensa show requests
+  pensa show charset-normalizer`,
 		Args: cobra.ExactArgs(1),
 		RunE: runShow,
 	}

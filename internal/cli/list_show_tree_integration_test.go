@@ -36,7 +36,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"lock"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry lock failed: %v", err)
+		t.Fatalf("pensa lock failed: %v", err)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestListIntegration(t *testing.T) {
 	cmd.SetArgs([]string{"list"})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry list failed: %v", err)
+		t.Fatalf("pensa list failed: %v", err)
 	}
 
 	out := buf.String()
@@ -69,7 +69,7 @@ func TestListIntegration_TopLevel(t *testing.T) {
 	cmd.SetArgs([]string{"list", "--top-level"})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry list --top-level failed: %v", err)
+		t.Fatalf("pensa list --top-level failed: %v", err)
 	}
 
 	out := buf.String()
@@ -94,7 +94,7 @@ func TestShowIntegration(t *testing.T) {
 	cmd.SetArgs([]string{"show", "requests"})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry show requests failed: %v", err)
+		t.Fatalf("pensa show requests failed: %v", err)
 	}
 
 	out := buf.String()
@@ -131,7 +131,7 @@ func TestTreeIntegration(t *testing.T) {
 	cmd.SetArgs([]string{"tree"})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry tree failed: %v", err)
+		t.Fatalf("pensa tree failed: %v", err)
 	}
 
 	out := buf.String()
@@ -153,7 +153,7 @@ func TestTreeIntegration_SinglePackage(t *testing.T) {
 	cmd.SetArgs([]string{"tree", "requests"})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry tree requests failed: %v", err)
+		t.Fatalf("pensa tree requests failed: %v", err)
 	}
 
 	out := buf.String()
@@ -175,7 +175,7 @@ func TestTreeIntegration_TopLevel(t *testing.T) {
 	cmd.SetArgs([]string{"tree", "--top-level"})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("goetry tree --top-level failed: %v", err)
+		t.Fatalf("pensa tree --top-level failed: %v", err)
 	}
 
 	out := buf.String()

@@ -9,9 +9,9 @@ var Version = "dev"
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "goetry",
-		Short: "A fast Python package manager",
-		Long:  "Goetry is a fast Python package manager written in Go, inspired by Poetry's UX.",
+		Use:   "pensa",
+		Short: "A fast enough Python package and project manager, written in Go",
+		Long:  "A fast enough Python package and project manager, written in Go.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

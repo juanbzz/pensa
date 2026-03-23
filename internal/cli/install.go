@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/juanbzz/goetry/internal/installer"
-	"github.com/juanbzz/goetry/internal/lockfile"
-	"github.com/juanbzz/goetry/internal/python"
+	"github.com/juanbzz/pensa/internal/installer"
+	"github.com/juanbzz/pensa/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/python"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +38,7 @@ func installFromLock(w interface{ Write([]byte) (int, error) }) error {
 	lockPath := filepath.Join(dir, "poetry.lock")
 	lf, err := lockfile.ReadLockFile(lockPath)
 	if err != nil {
-		return fmt.Errorf("read poetry.lock: %w (run 'goetry lock' first)", err)
+		return fmt.Errorf("read poetry.lock: %w (run 'pensa lock' first)", err)
 	}
 
 	if len(lf.Packages) == 0 {

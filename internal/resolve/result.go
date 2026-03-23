@@ -1,6 +1,6 @@
 package resolve
 
-import "github.com/juanbzz/goetry/pkg/version"
+import "github.com/juanbzz/pensa/pkg/version"
 
 // SolverResult contains the resolved package versions.
 type SolverResult struct {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juanbzz/goetry/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/lockfile"
 )
 
 // setupCheckTest creates a temp dir with matching pyproject.toml and poetry.lock.

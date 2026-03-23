@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juanbzz/goetry/internal/python"
+	"github.com/juanbzz/pensa/internal/python"
 )
 
 func TestEnv_PrintsPath(t *testing.T) {

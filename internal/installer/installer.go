@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juanbzz/goetry/internal/index"
-	"github.com/juanbzz/goetry/internal/lockfile"
-	"github.com/juanbzz/goetry/internal/python"
+	"github.com/juanbzz/pensa/internal/index"
+	"github.com/juanbzz/pensa/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/python"
 )
 
 // Installer downloads and installs packages into a venv.

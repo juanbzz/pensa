@@ -3,7 +3,7 @@ package resolve
 import (
 	"fmt"
 
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // PartialSolution tracks the solver's current best guess about package versions.

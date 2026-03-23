@@ -1,7 +1,7 @@
 package resolve
 
 import (
-	"github.com/juanbzz/goetry/pkg/version"
+	"github.com/juanbzz/pensa/pkg/version"
 )
 
 // Assignment is a Term in the partial solution with additional metadata.

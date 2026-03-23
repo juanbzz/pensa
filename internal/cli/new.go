@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juanbzz/goetry/internal/python"
+	"github.com/juanbzz/pensa/internal/python"
 	"github.com/spf13/cobra"
 )
 
@@ -15,9 +15,9 @@ func newNewCmd() *cobra.Command {
 		Use:   "new [directory]",
 		Short: "Create a new Python project",
 		Long:  "Scaffolds a new Python project with pyproject.toml, README.md, .gitignore, and main.py.",
-		Example: `  goetry new
-  goetry new myproject
-  goetry new --name custom-name`,
+		Example: `  pensa new
+  pensa new myproject
+  pensa new --name custom-name`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: runNew,
 	}

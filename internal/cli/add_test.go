@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/juanbzz/goetry/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/pyproject"
 )
 
 func TestParseAddArg_NameOnly(t *testing.T) {

@@ -46,7 +46,7 @@ build-backend = "poetry.core.masonry.api"
 
 	err := cmd.Execute()
 	if err != nil {
-		t.Fatalf("goetry lock failed: %v", err)
+		t.Fatalf("pensa lock failed: %v", err)
 	}
 
 	// Verify poetry.lock was created.
@@ -105,7 +105,7 @@ build-backend = "poetry.core.masonry.api"
 
 	err := cmd.Execute()
 	if err != nil {
-		t.Fatalf("goetry lock failed: %v", err)
+		t.Fatalf("pensa lock failed: %v", err)
 	}
 
 	data, err := os.ReadFile("poetry.lock")
@@ -159,7 +159,7 @@ build-backend = "poetry.core.masonry.api"
 
 	err := cmd.Execute()
 	if err != nil {
-		t.Fatalf("goetry lock with Poetry format failed: %v", err)
+		t.Fatalf("pensa lock with Poetry format failed: %v", err)
 	}
 
 	data, err := os.ReadFile("poetry.lock")
@@ -194,7 +194,7 @@ build-backend = "poetry.core.masonry.api"
 
 	err := cmd.Execute()
 	if err != nil {
-		t.Fatalf("goetry lock with no deps failed: %v", err)
+		t.Fatalf("pensa lock with no deps failed: %v", err)
 	}
 
 	output := buf.String()
