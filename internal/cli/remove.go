@@ -75,7 +75,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	if err := resolveAndLock(w, proj, pyprojectPath, lockOptions{}); err != nil {
 		return err
 	}
-	return installFromLock(w)
+	return installFromLock(w, true)
 }
 
 // removeFromProject removes a dependency from the appropriate section of pyproject.toml.

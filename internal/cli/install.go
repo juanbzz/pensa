@@ -15,21 +15,25 @@ import (
 )
 
 func newInstallCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Install dependencies from poetry.lock",
 		Long:  "Creates a virtual environment and installs all locked dependencies.",
 		RunE:  runInstall,
 	}
+	cmd.Flags().Bool("no-root", false, "Do not install the project itself")
+	return cmd
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	return installFromLock(cmd.OutOrStdout())
+	noRoot, _ := cmd.Flags().GetBool("no-root")
+	return installFromLock(cmd.OutOrStdout(), !noRoot)
 }
 
 // installFromLock reads poetry.lock and installs packages into a venv.
-// Shared between `install` and `add` commands.
-func installFromLock(w interface{ Write([]byte) (int, error) }) error {
+// If installRoot is true, also installs the project itself in editable mode.
+// Shared between `install`, `add`, `update`, and `remove` commands.
+func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool) error {
 	start := time.Now()
 
 	dir, err := os.Getwd()
@@ -89,6 +93,12 @@ func installFromLock(w interface{ Write([]byte) (int, error) }) error {
 
 	if len(toInstall) == 0 {
 		fmt.Fprintf(w, "%s\n", green("All packages up to date."))
+		// Still install project itself if requested.
+		if installRoot {
+			if err := installProject(w, dir, venvPath, py); err != nil {
+				return fmt.Errorf("install project: %w", err)
+			}
+		}
 		return nil
 	}
 
@@ -137,6 +147,13 @@ func installFromLock(w interface{ Write([]byte) (int, error) }) error {
 
 	elapsed := time.Since(start)
 	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Installed"), len(results), elapsed.Seconds())
+
+	// Install the project itself in editable mode.
+	if installRoot {
+		if err := installProject(w, dir, venvPath, py); err != nil {
+			return fmt.Errorf("install project: %w", err)
+		}
+	}
 
 	return nil
 }

@@ -84,7 +84,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Install packages.
-	return installFromLock(cmd.OutOrStdout())
+	return installFromLock(cmd.OutOrStdout(), true)
 }
 
 // parseAddArg parses "name" or "name@constraint" into components.
