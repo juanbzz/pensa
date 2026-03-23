@@ -49,12 +49,12 @@ func runLock(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	return resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath)
+	return resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath, lockOptions{})
 }
 
 // resolveAndLock runs the full resolve → lock pipeline.
-// Shared between `lock` and `add` commands.
-func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string) error {
+// Shared between `lock`, `add`, `remove`, and `update` commands.
+func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string, opts lockOptions) error {
 	start := time.Now()
 
 	deps, err := proj.ResolveDependencies()
@@ -79,8 +79,18 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		})
 	}
 
-	provider := &indexProvider{client: client}
-	solver := resolve.NewSolver(provider, proj.Name(), resolverDeps)
+	baseProvider := &indexProvider{client: client}
+
+	// Wrap provider to prefer locked versions unless upgrading.
+	var solverProvider resolve.Provider = baseProvider
+	if !opts.upgrade {
+		lockPath := filepath.Join(filepath.Dir(pyprojectPath), "poetry.lock")
+		if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
+			solverProvider = newLockedProvider(baseProvider, lf, opts.upgradePackages)
+		}
+	}
+
+	solver := resolve.NewSolver(solverProvider, proj.Name(), resolverDeps)
 
 	fmt.Fprintf(w, "%s\n", blue("Resolving dependencies..."))
 

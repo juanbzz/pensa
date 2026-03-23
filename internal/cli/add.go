@@ -79,7 +79,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Resolve and lock.
-	if err := resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath); err != nil {
+	if err := resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath, lockOptions{}); err != nil {
 		return err
 	}
 

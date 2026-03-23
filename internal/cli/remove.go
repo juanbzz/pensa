@@ -72,7 +72,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	// Re-lock and re-install.
-	if err := resolveAndLock(w, proj, pyprojectPath); err != nil {
+	if err := resolveAndLock(w, proj, pyprojectPath, lockOptions{}); err != nil {
 		return err
 	}
 	return installFromLock(w)
