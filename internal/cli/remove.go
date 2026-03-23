@@ -11,15 +11,18 @@ import (
 )
 
 func newRemoveCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "remove [packages...]",
 		Short: "Remove dependencies from the project",
 		Long:  "Removes one or more packages from pyproject.toml, re-locks, and re-installs.",
 		Example: `  pensa remove requests
-  pensa remove requests flask`,
+  pensa remove requests flask
+  pensa remove pytest -G dev`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: runRemove,
 	}
+	cmd.Flags().StringP("group", "G", "", "Dependency group (e.g., dev, test)")
+	return cmd
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
@@ -36,10 +39,18 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	w := cmd.OutOrStdout()
 
+	group, _ := cmd.Flags().GetString("group")
+
 	for _, arg := range args {
 		name := pep508.NormalizeName(arg)
-		if err := removeFromProject(proj, name); err != nil {
-			return err
+		if group != "" {
+			if err := removeFromGroup(proj, name, group); err != nil {
+				return err
+			}
+		} else {
+			if err := removeFromProject(proj, name); err != nil {
+				return err
+			}
 		}
 		fmt.Fprintf(w, "%s %s\n", yellow("Removing"), bold(name))
 	}
@@ -54,11 +65,12 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("re-read pyproject.toml: %w", err)
 	}
 
-	// Check if any deps remain.
-	deps, err := proj.ResolveDependencies()
+	// Check if any deps remain (across all groups).
+	allDeps, err := proj.ResolveAllDependencies()
 	if err != nil {
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
+	deps := allDeps
 
 	lockPath := filepath.Join(dir, "poetry.lock")
 
@@ -75,7 +87,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	if err := resolveAndLock(w, proj, pyprojectPath, lockOptions{}); err != nil {
 		return err
 	}
-	return installFromLock(w, true)
+	return installFromLock(w, true, nil)
 }
 
 // removeFromProject removes a dependency from the appropriate section of pyproject.toml.
@@ -107,4 +119,28 @@ func removeFromProject(proj *pyproject.PyProject, name string) error {
 	}
 
 	return fmt.Errorf("%q is not a dependency", name)
+}
+
+// removeFromGroup removes a dependency from a named group.
+func removeFromGroup(proj *pyproject.PyProject, name, group string) error {
+	normalized := normalizeName(name)
+
+	if !proj.HasPoetrySection() || proj.Tool.Poetry.Groups == nil {
+		return fmt.Errorf("%q is not a dependency in group %q", name, group)
+	}
+
+	g, ok := proj.Tool.Poetry.Groups[group]
+	if !ok || len(g.Dependencies) == 0 {
+		return fmt.Errorf("%q is not a dependency in group %q", name, group)
+	}
+
+	for key := range g.Dependencies {
+		if normalizeName(key) == normalized {
+			delete(g.Dependencies, key)
+			proj.Tool.Poetry.Groups[group] = g
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%q is not a dependency in group %q", name, group)
 }

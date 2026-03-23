@@ -25,17 +25,27 @@ var venvSkipPackages = map[string]bool{
 }
 
 func newSyncCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Sync venv with lock file",
 		Long:  "Makes the virtual environment match the lock file exactly. Installs missing packages and removes extras.",
-		Example: `  pensa sync`,
+		Example: `  pensa sync
+  pensa sync --no-dev`,
 		Args: cobra.NoArgs,
 		RunE: runSync,
 	}
+	cmd.Flags().Bool("no-dev", false, "Do not install dev dependencies")
+	cmd.Flags().StringSlice("with", nil, "Include optional dependency groups")
+	cmd.Flags().String("only", "", "Install only this dependency group")
+	return cmd
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
+	noDev, _ := cmd.Flags().GetBool("no-dev")
+	withGroups, _ := cmd.Flags().GetStringSlice("with")
+	onlyGroup, _ := cmd.Flags().GetString("only")
+	groups := resolveInstallGroups(noDev, withGroups, onlyGroup)
+
 	start := time.Now()
 	w := cmd.OutOrStdout()
 
@@ -74,9 +84,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 		lockedNames[normalizeName(pkg.Name)] = pkg.Version
 	}
 
-	// Compute what to install (missing or wrong version).
+	// Compute what to install (missing or wrong version, filtered by group).
 	var toInstall []lockfile.LockedPackage
 	for _, pkg := range lf.Packages {
+		if !packageInGroups(pkg, groups) {
+			continue
+		}
 		if installed[normalizeName(pkg.Name)] == pkg.Version {
 			continue
 		}

@@ -15,7 +15,7 @@ import (
 )
 
 func newAddCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "add [packages...]",
 		Short: "Add dependencies to pyproject.toml and lock them",
 		Long: `Adds one or more packages to pyproject.toml and resolves dependencies.
@@ -23,10 +23,13 @@ func newAddCmd() *cobra.Command {
 Specify packages as:
   pensa add requests              # latest version, caret constraint
   pensa add requests@^2.28       # explicit constraint
-  pensa add requests flask        # multiple packages`,
+  pensa add requests flask        # multiple packages
+  pensa add pytest -G dev         # add to dev group`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: runAdd,
 	}
+	cmd.Flags().StringP("group", "G", "", "Dependency group (e.g., dev, test)")
+	return cmd
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
@@ -46,6 +49,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	group, _ := cmd.Flags().GetString("group")
+
 	for _, arg := range args {
 		name, constraintStr, err := parseAddArg(arg)
 		if err != nil {
@@ -63,8 +68,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(cmd.OutOrStdout(), "Using version %s for %s\n", bold(constraintStr), bold(name))
 		}
 
-		addToProject(proj, name, constraintStr)
-		fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s\n", green("Adding"), bold(name), dim("("+constraintStr+")"))
+		if group != "" {
+			addToGroup(proj, name, constraintStr, group)
+		} else {
+			addToProject(proj, name, constraintStr)
+		}
+
+		groupLabel := ""
+		if group != "" {
+			groupLabel = " " + dim("("+group+" group)")
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s%s\n", green("Adding"), bold(name), dim("("+constraintStr+")"), groupLabel)
 	}
 
 	// Write updated pyproject.toml.
@@ -84,7 +98,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Install packages.
-	return installFromLock(cmd.OutOrStdout(), true)
+	return installFromLock(cmd.OutOrStdout(), true, nil)
 }
 
 // parseAddArg parses "name" or "name@constraint" into components.
@@ -177,6 +191,26 @@ func sanitizePEP621Deps(proj *pyproject.PyProject) {
 			}
 		}
 	}
+}
+
+// addToGroup adds a dependency to a named group in [tool.poetry.group.{group}.dependencies].
+func addToGroup(proj *pyproject.PyProject, name, constraint, group string) {
+	// Ensure poetry section exists.
+	if proj.Tool == nil {
+		proj.Tool = &pyproject.ToolTable{}
+	}
+	if proj.Tool.Poetry == nil {
+		proj.Tool.Poetry = &pyproject.PoetryTable{}
+	}
+	if proj.Tool.Poetry.Groups == nil {
+		proj.Tool.Poetry.Groups = make(map[string]pyproject.PoetryGroup)
+	}
+	g := proj.Tool.Poetry.Groups[group]
+	if g.Dependencies == nil {
+		g.Dependencies = make(map[string]interface{})
+	}
+	g.Dependencies[name] = constraint
+	proj.Tool.Poetry.Groups[group] = g
 }
 
 // toPEP508 converts a Poetry-style constraint (^2.32.5, ~1.0) to PEP 508 format (>=2.32.5,<3).

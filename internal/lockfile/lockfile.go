@@ -127,11 +127,14 @@ func WriteLockFile(path string, lf *LockFile) error {
 }
 
 // BuildLockFile creates a LockFile from resolver results and package metadata.
+// depGroups maps normalized package names to their dependency groups.
+// Transitive deps not in depGroups are assigned to "main".
 func BuildLockFile(
 	result *resolve.SolverResult,
 	client *index.PyPIClient,
 	pythonVersions string,
 	contentHash string,
+	depGroups map[string][]string,
 ) (*LockFile, error) {
 	lf := &LockFile{
 		Metadata: LockMetadata{
@@ -145,6 +148,11 @@ func BuildLockFile(
 		locked, err := buildLockedPackage(client, pkgName, ver)
 		if err != nil {
 			return nil, fmt.Errorf("build lock entry for %s: %w", pkgName, err)
+		}
+		// Assign groups from direct dep mapping; transitive deps get "main".
+		normalized := strings.ToLower(strings.ReplaceAll(pkgName, "_", "-"))
+		if groups, ok := depGroups[normalized]; ok {
+			locked.Groups = groups
 		}
 		lf.Packages = append(lf.Packages, locked)
 	}

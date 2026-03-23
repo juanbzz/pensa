@@ -22,18 +22,40 @@ func newInstallCmd() *cobra.Command {
 		RunE:  runInstall,
 	}
 	cmd.Flags().Bool("no-root", false, "Do not install the project itself")
+	cmd.Flags().Bool("no-dev", false, "Do not install dev dependencies")
+	cmd.Flags().StringSlice("with", nil, "Include optional dependency groups")
+	cmd.Flags().String("only", "", "Install only this dependency group")
 	return cmd
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
 	noRoot, _ := cmd.Flags().GetBool("no-root")
-	return installFromLock(cmd.OutOrStdout(), !noRoot)
+	noDev, _ := cmd.Flags().GetBool("no-dev")
+	withGroups, _ := cmd.Flags().GetStringSlice("with")
+	onlyGroup, _ := cmd.Flags().GetString("only")
+
+	groups := resolveInstallGroups(noDev, withGroups, onlyGroup)
+	return installFromLock(cmd.OutOrStdout(), !noRoot, groups)
+}
+
+// resolveInstallGroups determines which groups to install based on flags.
+func resolveInstallGroups(noDev bool, withGroups []string, onlyGroup string) []string {
+	if onlyGroup != "" {
+		return []string{onlyGroup}
+	}
+	groups := []string{"main"}
+	if !noDev {
+		groups = append(groups, "dev")
+	}
+	groups = append(groups, withGroups...)
+	return groups
 }
 
 // installFromLock reads poetry.lock and installs packages into a venv.
 // If installRoot is true, also installs the project itself in editable mode.
+// groups controls which dependency groups to install (nil = all).
 // Shared between `install`, `add`, `update`, and `remove` commands.
-func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool) error {
+func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool, groups []string) error {
 	start := time.Now()
 
 	dir, err := os.Getwd()
@@ -85,6 +107,10 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 
 	var toInstall []lockfile.LockedPackage
 	for _, pkg := range lf.Packages {
+		// Filter by group if specified.
+		if groups != nil && !packageInGroups(pkg, groups) {
+			continue
+		}
 		if installed[normalizeName(pkg.Name)] == pkg.Version {
 			continue
 		}

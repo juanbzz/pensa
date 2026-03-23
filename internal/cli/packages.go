@@ -68,6 +68,18 @@ func filterTopLevel(pkgs []lockfile.LockedPackage) ([]lockfile.LockedPackage, er
 	return filtered, nil
 }
 
+// packageInGroups checks if a locked package belongs to any of the specified groups.
+func packageInGroups(pkg lockfile.LockedPackage, groups []string) bool {
+	for _, pkgGroup := range pkg.Groups {
+		for _, g := range groups {
+			if pkgGroup == g {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // buildPackageIndex creates a map from normalized name to package for lookups.
 func buildPackageIndex(pkgs []lockfile.LockedPackage) map[string]lockfile.LockedPackage {
 	idx := make(map[string]lockfile.LockedPackage, len(pkgs))
