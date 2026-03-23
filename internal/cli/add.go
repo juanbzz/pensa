@@ -128,8 +128,8 @@ func getLatestVersion(client *index.PyPIClient, name string) (version.Version, e
 // addToProject adds a dependency to the appropriate section of pyproject.toml.
 func addToProject(proj *pyproject.PyProject, name, constraint string) {
 	if proj.HasProjectSection() {
-		// PEP 621: append PEP 508 string.
-		depStr := name + constraint
+		// PEP 621: convert Poetry constraint (^, ~) to PEP 508 range.
+		depStr := name + toPEP508(constraint)
 		// Check if already exists — update if so.
 		for i, existing := range proj.Project.Dependencies {
 			dep, err := pep508.Parse(existing)
@@ -152,6 +152,19 @@ func addToProject(proj *pyproject.PyProject, name, constraint string) {
 				Name: proj.Name(),
 			}
 		}
-		proj.Project.Dependencies = append(proj.Project.Dependencies, name+constraint)
+		proj.Project.Dependencies = append(proj.Project.Dependencies, name+toPEP508(constraint))
 	}
+}
+
+// toPEP508 converts a Poetry-style constraint (^2.32.5, ~1.0) to PEP 508 format (>=2.32.5,<3).
+// If the constraint is already PEP 508 compatible, it's returned as-is.
+func toPEP508(constraint string) string {
+	if constraint == "" {
+		return ""
+	}
+	c, err := version.ParseConstraint(constraint)
+	if err != nil {
+		return constraint // can't parse, return as-is
+	}
+	return c.String()
 }

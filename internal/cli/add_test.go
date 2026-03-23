@@ -65,7 +65,7 @@ func TestAddToProject_PEP621(t *testing.T) {
 	if len(proj.Project.Dependencies) != 2 {
 		t.Fatalf("deps count = %d, want 2", len(proj.Project.Dependencies))
 	}
-	if proj.Project.Dependencies[1] != "requests^2.28" {
+	if proj.Project.Dependencies[1] != "requests>=2.28,<3.0" {
 		t.Errorf("dep = %q", proj.Project.Dependencies[1])
 	}
 }
@@ -83,7 +83,7 @@ func TestAddToProject_PEP621_UpdateExisting(t *testing.T) {
 	if len(proj.Project.Dependencies) != 1 {
 		t.Fatalf("deps count = %d, want 1 (updated in place)", len(proj.Project.Dependencies))
 	}
-	if proj.Project.Dependencies[0] != "requests^2.28" {
+	if proj.Project.Dependencies[0] != "requests>=2.28,<3.0" {
 		t.Errorf("dep = %q", proj.Project.Dependencies[0])
 	}
 }
