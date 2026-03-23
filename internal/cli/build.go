@@ -65,8 +65,6 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		buildWheel = false
 	}
 
-	fmt.Fprintf(w, "%s %s %s\n", blue("Building"), bold(name), dim("("+ver+")"))
-
 	opts := build.Options{
 		ProjectDir: dir,
 		OutputDir:  outputDir,
@@ -74,8 +72,13 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		Sdist:      buildSdist,
 	}
 
-	result, err := build.Build(opts)
-	if err != nil {
+	var result *build.Result
+	spinMsg := fmt.Sprintf("%s %s %s", blue("Building"), bold(name), dim("("+ver+")"))
+	if err := withSpinner(w, spinMsg, func() error {
+		var buildErr error
+		result, buildErr = build.Build(opts)
+		return buildErr
+	}); err != nil {
 		return err
 	}
 

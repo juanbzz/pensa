@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/juanbzz/pensa/internal/installer"
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/python"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 // venvSkipPackages are infrastructure packages that should never be removed.
@@ -125,11 +127,46 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		ins := installer.NewInstaller(client, venvPath, py, cacheDir)
 
-		fmt.Fprintf(w, "Installing %d packages...\n", len(toInstall))
+		// Phase 1: Download in parallel.
+		type downloadResult struct {
+			pkg       lockfile.LockedPackage
+			wheelPath string
+		}
+
+		stop := downloadSpinner(w, len(toInstall))
+
+		var mu sync.Mutex
+		var results []downloadResult
+
+		g := new(errgroup.Group)
+		g.SetLimit(4)
+
 		for _, pkg := range toInstall {
-			fmt.Fprintf(w, "  %s %s %s\n", green("Installing"), bold(pkg.Name), dim("("+pkg.Version+")"))
-			if err := ins.InstallPackage(pkg); err != nil {
-				return fmt.Errorf("install %s: %w", pkg.Name, err)
+			pkg := pkg
+			g.Go(func() error {
+				path, err := ins.DownloadPackage(pkg)
+				if err != nil {
+					return fmt.Errorf("download %s: %w", pkg.Name, err)
+				}
+				mu.Lock()
+				results = append(results, downloadResult{pkg, path})
+				mu.Unlock()
+				return nil
+			})
+		}
+
+		if err := g.Wait(); err != nil {
+			stop()
+			return err
+		}
+		stop()
+
+		// Phase 2: Install from cache.
+		fmt.Fprintf(w, "Installing %d packages...\n", len(results))
+		for _, res := range results {
+			fmt.Fprintf(w, "  %s %s %s\n", green("Installing"), bold(res.pkg.Name), dim("("+res.pkg.Version+")"))
+			if err := ins.InstallFromCache(res.pkg, res.wheelPath); err != nil {
+				return fmt.Errorf("install %s: %w", res.pkg.Name, err)
 			}
 		}
 	}
