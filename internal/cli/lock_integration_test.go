@@ -50,27 +50,27 @@ build-backend = "poetry.core.masonry.api"
 	}
 
 	// Verify poetry.lock was created.
-	data, err := os.ReadFile("poetry.lock")
+	data, err := os.ReadFile("pensa.lock")
 	if err != nil {
-		t.Fatal("poetry.lock not created")
+		t.Fatal("pensa.lock not created")
 	}
 	content := string(data)
 
 	// Verify structure.
 	if !strings.Contains(content, `name = "certifi"`) {
-		t.Error("poetry.lock missing certifi")
+		t.Error("pensa.lock missing certifi")
 	}
 	if !strings.Contains(content, "[metadata]") {
-		t.Error("poetry.lock missing metadata")
+		t.Error("pensa.lock missing metadata")
 	}
 	if !strings.Contains(content, `lock-version = "2.1"`) {
-		t.Error("poetry.lock missing lock-version")
+		t.Error("pensa.lock missing lock-version")
 	}
 	if !strings.Contains(content, `python-versions = ">=3.8"`) {
-		t.Error("poetry.lock missing python-versions")
+		t.Error("pensa.lock missing python-versions")
 	}
 	if !strings.Contains(content, "[[package]]") {
-		t.Error("poetry.lock missing [[package]]")
+		t.Error("pensa.lock missing [[package]]")
 	}
 
 	// Verify output message.
@@ -108,9 +108,9 @@ build-backend = "poetry.core.masonry.api"
 		t.Fatalf("pensa lock failed: %v", err)
 	}
 
-	data, err := os.ReadFile("poetry.lock")
+	data, err := os.ReadFile("pensa.lock")
 	if err != nil {
-		t.Fatal("poetry.lock not created")
+		t.Fatal("pensa.lock not created")
 	}
 	content := string(data)
 
@@ -118,13 +118,13 @@ build-backend = "poetry.core.masonry.api"
 	expectedPkgs := []string{"certifi", "charset-normalizer", "idna", "requests", "urllib3"}
 	for _, pkg := range expectedPkgs {
 		if !strings.Contains(content, `name = "`+pkg+`"`) {
-			t.Errorf("poetry.lock missing package %q", pkg)
+			t.Errorf("pensa.lock missing package %q", pkg)
 		}
 	}
 
 	// Verify requests has dependencies listed.
 	if !strings.Contains(content, "[package.dependencies]") {
-		t.Error("poetry.lock missing [package.dependencies] section")
+		t.Error("pensa.lock missing [package.dependencies] section")
 	}
 
 	// Verify output message.
@@ -162,14 +162,14 @@ build-backend = "poetry.core.masonry.api"
 		t.Fatalf("pensa lock with Poetry format failed: %v", err)
 	}
 
-	data, err := os.ReadFile("poetry.lock")
+	data, err := os.ReadFile("pensa.lock")
 	if err != nil {
-		t.Fatal("poetry.lock not created")
+		t.Fatal("pensa.lock not created")
 	}
 	content := string(data)
 
 	if !strings.Contains(content, `name = "certifi"`) {
-		t.Error("poetry.lock missing certifi")
+		t.Error("pensa.lock missing certifi")
 	}
 }
 
@@ -202,9 +202,9 @@ build-backend = "poetry.core.masonry.api"
 		t.Errorf("expected 'No dependencies' message, got: %s", output)
 	}
 
-	// No poetry.lock should be created.
-	if _, err := os.Stat("poetry.lock"); err == nil {
-		t.Error("poetry.lock should not be created when there are no dependencies")
+	// No pensa.lock should be created.
+	if _, err := os.Stat("pensa.lock"); err == nil {
+		t.Error("pensa.lock should not be created when there are no dependencies")
 	}
 }
 

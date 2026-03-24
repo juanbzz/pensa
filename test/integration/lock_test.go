@@ -151,7 +151,7 @@ func TestDropIn_PoetryInitPensaLock(t *testing.T) {
 	t.Logf("Pensa output: %s", pensaOutput)
 
 	// Verify pensa created a lock file.
-	pensaLock := execInDir(t, container, "/work", "cat poetry.lock")
+	pensaLock := execInDir(t, container, "/work", "cat pensa.lock")
 	if !strings.Contains(pensaLock, "requests") {
 		t.Fatal("Pensa lock file missing requests")
 	}
@@ -194,7 +194,7 @@ PYEOF`)
 	t.Logf("Pensa output: %s", pensaOutput)
 
 	// Verify lock file contains certifi.
-	lockContent := execInDir(t, container, "/work", "cat poetry.lock")
+	lockContent := execInDir(t, container, "/work", "cat pensa.lock")
 	if !strings.Contains(lockContent, `name = "certifi"`) {
 		t.Error("lock file missing certifi")
 	}
@@ -236,7 +236,7 @@ func TestDropIn_PoetryAddThenPensaAdd(t *testing.T) {
 	}
 
 	// Verify poetry.lock was updated.
-	pensaLock := execInDir(t, container, "/work", "cat poetry.lock")
+	pensaLock := execInDir(t, container, "/work", "cat pensa.lock")
 	pensaPackages := extractPackageNames(pensaLock)
 	t.Logf("Packages after pensa add httpx: %v", pensaPackages)
 
