@@ -30,18 +30,20 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 	w := cmd.OutOrStdout()
 	pyprojectPath := filepath.Join(dir, "pyproject.toml")
-	lockPath := filepath.Join(dir, "poetry.lock")
-
 	// Read pyproject.toml.
 	proj, err := pyproject.ReadPyProject(pyprojectPath)
 	if err != nil {
 		return fmt.Errorf("read pyproject.toml: %w", err)
 	}
 
-	// Read poetry.lock.
+	// Read lock file.
+	lockPath, _ := lockfile.DetectLockFile(dir)
+	if lockPath == "" {
+		return fmt.Errorf("no lock file found (run 'pensa lock' first)")
+	}
 	lf, err := lockfile.ReadLockFile(lockPath)
 	if err != nil {
-		return fmt.Errorf("read poetry.lock: %w (run 'pensa lock' first)", err)
+		return fmt.Errorf("read lock file: %w", err)
 	}
 
 	var issues []string

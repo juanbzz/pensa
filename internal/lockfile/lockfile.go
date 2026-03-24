@@ -34,6 +34,7 @@ type LockedPackage struct {
 type PackageFile struct {
 	File string
 	Hash string
+	URL  string // full download URL (pensa.lock/uv.lock); empty for poetry.lock
 }
 
 // LockMetadata contains lock file metadata.
@@ -182,7 +183,7 @@ func buildLockedPackage(client *index.PyPIClient, name string, ver version.Versi
 		Extras:         make(map[string][]string),
 	}
 
-	// Files.
+	// Files (with download URLs for pensa.lock format).
 	for _, f := range info.FilesForVersion(ver) {
 		hash := ""
 		if sha, ok := f.Hashes["sha256"]; ok {
@@ -191,6 +192,7 @@ func buildLockedPackage(client *index.PyPIClient, name string, ver version.Versi
 		pkg.Files = append(pkg.Files, PackageFile{
 			File: f.Filename,
 			Hash: hash,
+			URL:  f.URL,
 		})
 	}
 

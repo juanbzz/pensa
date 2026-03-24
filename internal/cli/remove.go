@@ -72,12 +72,10 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 	deps := allDeps
 
-	lockPath := filepath.Join(dir, "poetry.lock")
-
 	if len(deps) == 0 {
-		// No deps left — remove lock file if it exists.
-		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove poetry.lock: %w", err)
+		// No deps left — remove any lock file that exists.
+		for _, name := range []string{"pensa.lock", "uv.lock", "poetry.lock"} {
+			os.Remove(filepath.Join(dir, name))
 		}
 		fmt.Fprintf(w, "No dependencies remaining.\n")
 		return nil

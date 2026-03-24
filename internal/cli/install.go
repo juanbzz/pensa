@@ -63,10 +63,13 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	lockPath := filepath.Join(dir, "poetry.lock")
+	lockPath, _ := lockfile.DetectLockFile(dir)
+	if lockPath == "" {
+		return fmt.Errorf("no lock file found (run 'pensa lock' first)")
+	}
 	lf, err := lockfile.ReadLockFile(lockPath)
 	if err != nil {
-		return fmt.Errorf("read poetry.lock: %w (run 'pensa lock' first)", err)
+		return fmt.Errorf("read lock file: %w", err)
 	}
 
 	if len(lf.Packages) == 0 {
