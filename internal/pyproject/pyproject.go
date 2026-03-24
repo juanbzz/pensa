@@ -44,6 +44,24 @@ type Author struct {
 // ToolTable represents the [tool] section.
 type ToolTable struct {
 	Poetry *PoetryTable `toml:"poetry,omitempty"`
+	Pensa  *PensaTable  `toml:"pensa,omitempty"`
+	UV     *UVTable     `toml:"uv,omitempty"`
+}
+
+// PensaTable represents [tool.pensa].
+type PensaTable struct {
+	Workspace *WorkspaceConfig `toml:"workspace,omitempty"`
+}
+
+// UVTable represents [tool.uv].
+type UVTable struct {
+	Workspace *WorkspaceConfig `toml:"workspace,omitempty"`
+}
+
+// WorkspaceConfig represents workspace member configuration.
+type WorkspaceConfig struct {
+	Members []string `toml:"members"`
+	Exclude []string `toml:"exclude,omitempty"`
 }
 
 // PoetryTable represents [tool.poetry].
@@ -146,4 +164,24 @@ func (p *PyProject) HasProjectSection() bool {
 // HasPoetrySection returns true if [tool.poetry] is defined.
 func (p *PyProject) HasPoetrySection() bool {
 	return p.Tool != nil && p.Tool.Poetry != nil
+}
+
+// WorkspaceMembers returns the workspace member paths if this is a workspace root.
+// Checks [tool.pensa.workspace] first, then [tool.uv.workspace].
+// Returns nil if not a workspace.
+func (p *PyProject) WorkspaceMembers() []string {
+	if p.Tool != nil {
+		if p.Tool.Pensa != nil && p.Tool.Pensa.Workspace != nil && len(p.Tool.Pensa.Workspace.Members) > 0 {
+			return p.Tool.Pensa.Workspace.Members
+		}
+		if p.Tool.UV != nil && p.Tool.UV.Workspace != nil && len(p.Tool.UV.Workspace.Members) > 0 {
+			return p.Tool.UV.Workspace.Members
+		}
+	}
+	return nil
+}
+
+// IsWorkspaceRoot returns true if this pyproject defines a workspace.
+func (p *PyProject) IsWorkspaceRoot() bool {
+	return len(p.WorkspaceMembers()) > 0
 }

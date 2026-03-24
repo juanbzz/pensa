@@ -13,6 +13,7 @@ import (
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
 	"github.com/juanbzz/pensa/internal/resolve"
+	"github.com/juanbzz/pensa/internal/workspace"
 	"github.com/juanbzz/pensa/pkg/pep508"
 	"github.com/juanbzz/pensa/pkg/version"
 	"github.com/spf13/cobra"
@@ -33,6 +34,13 @@ func runLock(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
+	// Check for workspace.
+	ws, _ := workspace.Discover(dir)
+	if ws != nil {
+		return runLockWorkspace(cmd.OutOrStdout(), ws, lockOptions{})
+	}
+
+	// Single project mode.
 	pyprojectPath := filepath.Join(dir, "pyproject.toml")
 	proj, err := pyproject.ReadPyProject(pyprojectPath)
 	if err != nil {
@@ -231,6 +239,125 @@ func isRequestedExtra(d pep508.Dependency, requestedExtras []string) bool {
 		}
 	}
 	return false
+}
+
+// runLockWorkspace locks all workspace members together into a single lock file.
+func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) error {
+	start := time.Now()
+
+	fmt.Fprintf(w, "%s workspace with %d members\n", blue("Locking"), len(ws.Members))
+	for _, m := range ws.Members {
+		fmt.Fprintf(w, "  %s %s\n", dim("•"), m.Name)
+	}
+
+	// Collect deps from all members.
+	depGroups := make(map[string][]string)
+	depExtras := make(map[string][]string)
+	seen := make(map[string]bool)
+	var resolverDeps []resolve.Dependency
+
+	for _, member := range ws.Members {
+		groupedDeps, err := member.Project.ResolveAllDependencies()
+		if err != nil {
+			return fmt.Errorf("resolve deps for %s: %w", member.Name, err)
+		}
+
+		for _, gd := range groupedDeps {
+			normalized := normalizeName(gd.Dep.Name)
+			depGroups[normalized] = append(depGroups[normalized], gd.Group)
+			if len(gd.Dep.Extras) > 0 {
+				depExtras[normalized] = append(depExtras[normalized], gd.Dep.Extras...)
+			}
+
+			if seen[normalized] {
+				continue
+			}
+			seen[normalized] = true
+
+			constraint := gd.Dep.Constraint
+			if constraint == nil {
+				constraint = version.AnyConstraint()
+			}
+			resolverDeps = append(resolverDeps, resolve.Dependency{
+				Pkg:        gd.Dep.Name,
+				Constraint: constraint,
+			})
+		}
+	}
+
+	if len(resolverDeps) == 0 {
+		fmt.Fprintln(w, yellow("No dependencies to lock."))
+		return nil
+	}
+
+	client, err := newPyPIClient()
+	if err != nil {
+		return err
+	}
+
+	baseProvider := &indexProvider{client: client, requestedExtras: depExtras}
+
+	// Wrap provider to prefer locked versions unless upgrading.
+	var solverProvider resolve.Provider = baseProvider
+	if !opts.upgrade {
+		lockPath, _ := lockfile.DetectLockFile(ws.Root)
+		if lockPath != "" {
+			if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
+				solverProvider = newLockedProvider(baseProvider, lf, opts.upgradePackages)
+			}
+		}
+	}
+
+	solver := resolve.NewSolver(solverProvider, ws.Project.Name(), resolverDeps)
+
+	var result *resolve.SolverResult
+	if err := withSpinnerMsg(w, blue("Resolving dependencies..."), "", func() error {
+		var solveErr error
+		result, solveErr = solver.Solve()
+		return solveErr
+	}); err != nil {
+		return fmt.Errorf("resolve: %w", err)
+	}
+
+	pythonVersions := ">=3.8"
+	if ws.Project.HasProjectSection() && ws.Project.Project.RequiresPython != "" {
+		pythonVersions = ws.Project.Project.RequiresPython
+	}
+
+	// Compute content hash from all members' pyproject.toml files.
+	contentHash := computeWorkspaceHash(ws)
+
+	lf, err := lockfile.BuildLockFile(result, client, pythonVersions, contentHash, depGroups)
+	if err != nil {
+		return fmt.Errorf("build lock file: %w", err)
+	}
+
+	pensaLockPath := ws.LockFilePath()
+	if err := lockfile.WritePensaLockFile(pensaLockPath, lf); err != nil {
+		return fmt.Errorf("write lock file: %w", err)
+	}
+
+	elapsed := time.Since(start)
+	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Resolved"), len(result.Decisions), elapsed.Seconds())
+	fmt.Fprintf(w, "%s pensa.lock\n", green("Wrote"))
+
+	return nil
+}
+
+// computeWorkspaceHash computes a combined content hash from all workspace members.
+func computeWorkspaceHash(ws *workspace.Workspace) string {
+	h := sha256.New()
+	// Include root pyproject.
+	if data, err := os.ReadFile(filepath.Join(ws.Root, "pyproject.toml")); err == nil {
+		h.Write(data)
+	}
+	// Include each member's pyproject.
+	for _, m := range ws.Members {
+		if data, err := os.ReadFile(filepath.Join(m.Path, "pyproject.toml")); err == nil {
+			h.Write(data)
+		}
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 func defaultCacheDir() (string, error) {
