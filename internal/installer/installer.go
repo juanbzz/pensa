@@ -54,6 +54,8 @@ func (ins *Installer) InstallPackage(pkg lockfile.LockedPackage) error {
 }
 
 // DownloadPackage downloads a wheel to cache and returns the cached path.
+// If the lock file has embedded URLs (pensa.lock, uv.lock), uses them directly.
+// Falls back to querying PyPI for download URLs (poetry.lock compat).
 // Safe for concurrent use — cache writes use atomic rename.
 func (ins *Installer) DownloadPackage(pkg lockfile.LockedPackage) (string, error) {
 	wheelFile := bestWheelFromFiles(pkg.Files, ins.platform)
@@ -61,6 +63,12 @@ func (ins *Installer) DownloadPackage(pkg lockfile.LockedPackage) (string, error
 		return "", fmt.Errorf("no wheel found for %s %s", pkg.Name, pkg.Version)
 	}
 
+	// Use embedded URL if available (pensa.lock / uv.lock).
+	if wheelFile.URL != "" {
+		return ins.downloadWheel(wheelFile.File, wheelFile.URL, wheelFile.Hash)
+	}
+
+	// Fallback: query PyPI for download URL (poetry.lock compat).
 	info, err := ins.client.GetPackageInfo(pkg.Name)
 	if err != nil {
 		return "", fmt.Errorf("get package info: %w", err)

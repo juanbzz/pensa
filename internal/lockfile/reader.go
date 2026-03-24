@@ -3,12 +3,18 @@ package lockfile
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
 
-// ReadLockFile parses a poetry.lock file.
+// ReadLockFile parses a lock file in any supported format (pensa.lock, uv.lock, poetry.lock).
+// Auto-detects format from the file path.
 func ReadLockFile(path string) (*LockFile, error) {
+	if strings.HasSuffix(path, "uv.lock") {
+		return ReadUVLockFile(path)
+	}
+	// pensa.lock and poetry.lock use the same TOML format (for now).
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read lock file: %w", err)
@@ -37,6 +43,7 @@ type packageTOML struct {
 type fileTOML struct {
 	File string `toml:"file"`
 	Hash string `toml:"hash"`
+	URL  string `toml:"url"`
 }
 
 type metadataTOML struct {
@@ -76,6 +83,7 @@ func ParseLockFile(data []byte) (*LockFile, error) {
 			locked.Files = append(locked.Files, PackageFile{
 				File: f.File,
 				Hash: f.Hash,
+				URL:  f.URL,
 			})
 		}
 

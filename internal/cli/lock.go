@@ -102,9 +102,11 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	// Wrap provider to prefer locked versions unless upgrading.
 	var solverProvider resolve.Provider = baseProvider
 	if !opts.upgrade {
-		lockPath := filepath.Join(filepath.Dir(pyprojectPath), "poetry.lock")
-		if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
-			solverProvider = newLockedProvider(baseProvider, lf, opts.upgradePackages)
+		lockPath, _ := lockfile.DetectLockFile(filepath.Dir(pyprojectPath))
+		if lockPath != "" {
+			if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
+				solverProvider = newLockedProvider(baseProvider, lf, opts.upgradePackages)
+			}
 		}
 	}
 
@@ -131,14 +133,14 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		return fmt.Errorf("build lock file: %w", err)
 	}
 
-	lockPath := filepath.Join(filepath.Dir(pyprojectPath), "poetry.lock")
-	if err := lockfile.WriteLockFile(lockPath, lf); err != nil {
+	pensaLockPath := filepath.Join(filepath.Dir(pyprojectPath), "pensa.lock")
+	if err := lockfile.WritePensaLockFile(pensaLockPath, lf); err != nil {
 		return fmt.Errorf("write lock file: %w", err)
 	}
 
 	elapsed := time.Since(start)
 	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Resolved"), len(result.Decisions), elapsed.Seconds())
-	fmt.Fprintf(w, "%s poetry.lock\n", green("Wrote"))
+	fmt.Fprintf(w, "%s pensa.lock\n", green("Wrote"))
 
 	return nil
 }

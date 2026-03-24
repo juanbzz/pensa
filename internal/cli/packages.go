@@ -16,16 +16,21 @@ func normalizeName(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, "_", "-"))
 }
 
-// readLockFileFromCwd reads poetry.lock from the current working directory.
+// readLockFileFromCwd reads the lock file from the current working directory.
+// Auto-detects format: pensa.lock, uv.lock, or poetry.lock.
 func readLockFileFromCwd() (*lockfile.LockFile, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("get working directory: %w", err)
 	}
 
-	lf, err := lockfile.ReadLockFile(filepath.Join(dir, "poetry.lock"))
+	lockPath, _ := lockfile.DetectLockFile(dir)
+	if lockPath == "" {
+		return nil, fmt.Errorf("no lock file found (run 'pensa lock' first)")
+	}
+	lf, err := lockfile.ReadLockFile(lockPath)
 	if err != nil {
-		return nil, fmt.Errorf("read poetry.lock: %w (run 'pensa lock' first)", err)
+		return nil, fmt.Errorf("read lock file: %w", err)
 	}
 	return lf, nil
 }
