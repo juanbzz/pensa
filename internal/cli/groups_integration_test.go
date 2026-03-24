@@ -44,10 +44,10 @@ build-backend = "poetry.core.masonry.api"
 	}
 
 	// Verify lock file has pytest with dev group.
-	lockData, _ := os.ReadFile("poetry.lock")
+	lockData, _ := os.ReadFile("pensa.lock")
 	lockContent := string(lockData)
 	if !strings.Contains(lockContent, "pytest") {
-		t.Error("poetry.lock should contain pytest")
+		t.Error("pensa.lock should contain pytest")
 	}
 }
 
@@ -82,7 +82,7 @@ build-backend = "poetry.core.masonry.api"
 	}
 
 	// Verify lock has both packages.
-	lockData, _ := os.ReadFile("poetry.lock")
+	lockData, _ := os.ReadFile("pensa.lock")
 	if !strings.Contains(string(lockData), "certifi") {
 		t.Error("lock should contain certifi")
 	}

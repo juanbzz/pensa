@@ -169,7 +169,7 @@ build-backend = "hatchling.build"
 		t.Fatalf("pensa lock failed: %v", err)
 	}
 
-	lockData, _ := os.ReadFile("poetry.lock")
+	lockData, _ := os.ReadFile("pensa.lock")
 	content := string(lockData)
 
 	if !strings.Contains(content, "six") {
@@ -211,7 +211,7 @@ build-backend = "poetry.core.masonry.api"
 		t.Fatalf("pensa lock with Poetry groups failed: %v", err)
 	}
 
-	lockData, _ := os.ReadFile("poetry.lock")
+	lockData, _ := os.ReadFile("pensa.lock")
 	content := string(lockData)
 
 	if !strings.Contains(content, "certifi") {

@@ -65,9 +65,9 @@ build-backend = "poetry.core.masonry.api"
 		t.Error("pyproject.toml should still contain certifi")
 	}
 
-	// poetry.lock should still exist (certifi remains).
-	if _, err := os.Stat("poetry.lock"); err != nil {
-		t.Error("poetry.lock should still exist when deps remain")
+	// pensa.lock should still exist (certifi remains).
+	if _, err := os.Stat("pensa.lock"); err != nil {
+		t.Error("pensa.lock should still exist when deps remain")
 	}
 }
 
@@ -112,9 +112,9 @@ build-backend = "poetry.core.masonry.api"
 		t.Errorf("expected 'No dependencies remaining', got: %s", out)
 	}
 
-	// poetry.lock should be removed.
-	if _, err := os.Stat("poetry.lock"); err == nil {
-		t.Error("poetry.lock should be removed when no deps remain")
+	// pensa.lock should be removed.
+	if _, err := os.Stat("pensa.lock"); err == nil {
+		t.Error("pensa.lock should be removed when no deps remain")
 	}
 }
 
