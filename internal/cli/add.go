@@ -69,7 +69,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		if group != "" {
-			addToGroupWithExtras(proj, name, constraintStr, group, extras)
+			addToDependencyGroup(proj, name, constraintStr, extras, group)
 		} else {
 			addToProjectWithExtras(proj, name, constraintStr, extras)
 		}
@@ -301,6 +301,35 @@ func addToGroupWithExtras(proj *pyproject.PyProject, name, constraint, group str
 		"extras":  extras,
 	}
 	proj.Tool.Poetry.Groups[group] = g
+}
+
+// addToDependencyGroup adds a dep to [dependency-groups] (PEP 735 format).
+func addToDependencyGroup(proj *pyproject.PyProject, name, constraint string, extras []string, group string) {
+	if proj.DependencyGroups == nil {
+		proj.DependencyGroups = make(map[string][]interface{})
+	}
+
+	depStr := name
+	if len(extras) > 0 {
+		depStr += "[" + strings.Join(extras, ",") + "]"
+	}
+	depStr += toPEP508(constraint)
+
+	// Check if already exists — update in place.
+	normalized := pep508.NormalizeName(name)
+	entries := proj.DependencyGroups[group]
+	for i, entry := range entries {
+		if s, ok := entry.(string); ok {
+			d, err := pep508.Parse(s)
+			if err == nil && pep508.NormalizeName(d.Name) == normalized {
+				entries[i] = depStr
+				proj.DependencyGroups[group] = entries
+				return
+			}
+		}
+	}
+
+	proj.DependencyGroups[group] = append(entries, depStr)
 }
 
 // toPEP508 converts a Poetry-style constraint (^2.32.5, ~1.0) to PEP 508 format (>=2.32.5,<3).

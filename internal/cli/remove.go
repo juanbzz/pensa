@@ -44,7 +44,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	for _, arg := range args {
 		name := pep508.NormalizeName(arg)
 		if group != "" {
-			if err := removeFromGroup(proj, name, group); err != nil {
+			if err := removeFromDependencyGroup(proj, name, group); err != nil {
 				return err
 			}
 		} else {
@@ -121,7 +121,33 @@ func removeFromProject(proj *pyproject.PyProject, name string) error {
 	return fmt.Errorf("%q is not a dependency", name)
 }
 
-// removeFromGroup removes a dependency from a named group.
+// removeFromDependencyGroup removes a dependency from a PEP 735 or Poetry group.
+// Tries PEP 735 [dependency-groups] first, falls back to Poetry groups.
+func removeFromDependencyGroup(proj *pyproject.PyProject, name, group string) error {
+	normalized := normalizeName(name)
+
+	// Try PEP 735 first.
+	if proj.DependencyGroups != nil {
+		entries, ok := proj.DependencyGroups[group]
+		if ok {
+			for i, entry := range entries {
+				if s, ok := entry.(string); ok {
+					d, err := pep508.Parse(s)
+					if err == nil && normalizeName(d.Name) == normalized {
+						proj.DependencyGroups[group] = append(entries[:i], entries[i+1:]...)
+						return nil
+					}
+				}
+			}
+			return fmt.Errorf("%q is not a dependency in group %q", name, group)
+		}
+	}
+
+	// Fall back to Poetry groups.
+	return removeFromGroup(proj, name, group)
+}
+
+// removeFromGroup removes a dependency from a Poetry named group.
 func removeFromGroup(proj *pyproject.PyProject, name, group string) error {
 	normalized := normalizeName(name)
 
