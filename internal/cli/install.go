@@ -10,6 +10,7 @@ import (
 	"github.com/juanbzz/pensa/internal/installer"
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/python"
+	"github.com/juanbzz/pensa/internal/workspace"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -17,7 +18,7 @@ import (
 func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Install dependencies from poetry.lock",
+		Short: "Install dependencies from lock file",
 		Long:  "Creates a virtual environment and installs all locked dependencies.",
 		RunE:  runInstall,
 	}
@@ -25,6 +26,7 @@ func newInstallCmd() *cobra.Command {
 	cmd.Flags().Bool("no-dev", false, "Do not install dev dependencies")
 	cmd.Flags().StringSlice("with", nil, "Include optional dependency groups")
 	cmd.Flags().String("only", "", "Install only this dependency group")
+	cmd.Flags().String("package", "", "Install only this workspace member's dependencies")
 	return cmd
 }
 
@@ -63,7 +65,14 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	lockPath, _ := lockfile.DetectLockFile(dir)
+	// Check for workspace — use workspace root for lock file and venv.
+	ws, _ := workspace.Discover(dir)
+	rootDir := dir
+	if ws != nil {
+		rootDir = ws.Root
+	}
+
+	lockPath, _ := lockfile.DetectLockFile(rootDir)
 	if lockPath == "" {
 		return fmt.Errorf("no lock file found (run 'pensa lock' first)")
 	}
@@ -83,8 +92,8 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 		return fmt.Errorf("find Python: %w", err)
 	}
 
-	// Create venv if it doesn't exist.
-	venvPath := filepath.Join(dir, ".venv")
+	// Create venv if it doesn't exist (at workspace root or project dir).
+	venvPath := filepath.Join(rootDir, ".venv")
 	if !python.VenvExists(venvPath) {
 		fmt.Fprintf(w, "%s using Python %s\n", blue("Creating virtualenv"), bold(py.Version))
 		if err := python.CreateVenv(venvPath, py); err != nil {
@@ -124,8 +133,16 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 		fmt.Fprintf(w, "%s\n", green("All packages up to date."))
 		// Still install project itself if requested.
 		if installRoot {
-			if err := installProject(w, dir, venvPath, py); err != nil {
-				return fmt.Errorf("install project: %w", err)
+			if ws != nil {
+				for _, m := range ws.Members {
+					if err := installProject(w, m.Path, venvPath, py); err != nil {
+						return fmt.Errorf("install member %s: %w", m.Name, err)
+					}
+				}
+			} else {
+				if err := installProject(w, dir, venvPath, py); err != nil {
+					return fmt.Errorf("install project: %w", err)
+				}
 			}
 		}
 		return nil
@@ -179,8 +196,17 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 
 	// Install the project itself in editable mode.
 	if installRoot {
-		if err := installProject(w, dir, venvPath, py); err != nil {
-			return fmt.Errorf("install project: %w", err)
+		if ws != nil {
+			// Workspace: install each member in editable mode.
+			for _, m := range ws.Members {
+				if err := installProject(w, m.Path, venvPath, py); err != nil {
+					return fmt.Errorf("install member %s: %w", m.Name, err)
+				}
+			}
+		} else {
+			if err := installProject(w, dir, venvPath, py); err != nil {
+				return fmt.Errorf("install project: %w", err)
+			}
 		}
 	}
 
