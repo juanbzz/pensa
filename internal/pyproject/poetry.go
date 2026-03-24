@@ -174,9 +174,14 @@ func (p *PyProject) ResolveDependencies() ([]pep508.Dependency, error) {
 }
 
 // ResolveAllDependencies returns dependencies from all groups (main + all named groups).
+// PEP 735 [dependency-groups] takes precedence over [tool.poetry.group.X].
 func (p *PyProject) ResolveAllDependencies() ([]GroupedDependency, error) {
 	groups := []string{"main"}
-	if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
+	if p.DependencyGroups != nil {
+		for name := range p.DependencyGroups {
+			groups = append(groups, name)
+		}
+	} else if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
 		for name := range p.Tool.Poetry.Groups {
 			groups = append(groups, name)
 		}
@@ -217,8 +222,22 @@ func (p *PyProject) ResolveDependenciesForGroups(groups []string) ([]GroupedDepe
 		}
 	}
 
-	// Named groups (dev, test, etc.).
-	if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
+	// Named groups — PEP 735 takes precedence over Poetry groups.
+	if p.DependencyGroups != nil {
+		for groupName := range groupSet {
+			if groupName == "main" {
+				continue
+			}
+			if _, ok := p.DependencyGroups[groupName]; !ok {
+				continue
+			}
+			deps, err := p.resolvePEP735Group(groupName, groupName, make(map[string]bool))
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, deps...)
+		}
+	} else if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
 		for groupName, group := range p.Tool.Poetry.Groups {
 			if !groupSet[groupName] {
 				continue
@@ -236,5 +255,43 @@ func (p *PyProject) ResolveDependenciesForGroups(groups []string) ([]GroupedDepe
 		}
 	}
 
+	return result, nil
+}
+
+// resolvePEP735Group resolves a PEP 735 dependency group, expanding include-group references.
+// originGroup is the top-level group name (for labeling). seen tracks visited groups for cycle detection.
+func (p *PyProject) resolvePEP735Group(groupName, originGroup string, seen map[string]bool) ([]GroupedDependency, error) {
+	if seen[groupName] {
+		return nil, fmt.Errorf("circular dependency group reference: %s", groupName)
+	}
+	seen[groupName] = true
+	defer delete(seen, groupName)
+
+	entries, ok := p.DependencyGroups[groupName]
+	if !ok {
+		return nil, fmt.Errorf("dependency group %q not found", groupName)
+	}
+
+	var result []GroupedDependency
+	for _, entry := range entries {
+		switch v := entry.(type) {
+		case string:
+			d, err := pep508.Parse(v)
+			if err != nil {
+				return nil, fmt.Errorf("parse dependency in group %q: %w", groupName, err)
+			}
+			result = append(result, GroupedDependency{Dep: d, Group: originGroup})
+		case map[string]interface{}:
+			if includeGroup, ok := v["include-group"]; ok {
+				if name, ok := includeGroup.(string); ok {
+					deps, err := p.resolvePEP735Group(name, originGroup, seen)
+					if err != nil {
+						return nil, err
+					}
+					result = append(result, deps...)
+				}
+			}
+		}
+	}
 	return result, nil
 }

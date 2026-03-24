@@ -9,9 +9,10 @@ import (
 
 // PyProject represents a parsed pyproject.toml.
 type PyProject struct {
-	Project     *ProjectTable `toml:"project,omitempty"`
-	Tool        *ToolTable    `toml:"tool,omitempty"`
-	BuildSystem *BuildSystem  `toml:"build-system,omitempty"`
+	Project          *ProjectTable            `toml:"project,omitempty"`
+	Tool             *ToolTable               `toml:"tool,omitempty"`
+	BuildSystem      *BuildSystem             `toml:"build-system,omitempty"`
+	DependencyGroups map[string][]interface{} `toml:"dependency-groups,omitempty"`
 }
 
 // ProjectTable represents the [project] section (PEP 621).
