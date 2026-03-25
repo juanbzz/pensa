@@ -183,7 +183,7 @@ func (c *PyPIClient) GetVersionDetail(name string, ver version.Version) (*Versio
 	}
 
 	// Fall back to JSON API.
-	detail, err = c.fetchJSONAPI(normalized, ver)
+	detail, err = c.FetchJSONAPI(normalized, ver)
 	if err != nil {
 		return nil, err
 	}
@@ -223,6 +223,26 @@ func (c *PyPIClient) fetchPEP658Metadata(name string, ver version.Version) (*Ver
 	return ParseMetadata(data)
 }
 
+// FetchPEP658Metadata fetches PEP 658 metadata from a .metadata URL.
+func (c *PyPIClient) FetchPEP658Metadata(metadataURL string) (*VersionDetail, error) {
+	resp, err := c.httpClient.Get(metadataURL)
+	if err != nil {
+		return nil, fmt.Errorf("index: fetch metadata: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("index: metadata status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("index: read metadata: %w", err)
+	}
+
+	return ParseMetadata(data)
+}
+
 // jsonAPIResponse matches the PyPI JSON API response.
 type jsonAPIResponse struct {
 	Info struct {
@@ -233,7 +253,8 @@ type jsonAPIResponse struct {
 	} `json:"info"`
 }
 
-func (c *PyPIClient) fetchJSONAPI(name string, ver version.Version) (*VersionDetail, error) {
+// FetchJSONAPI fetches version metadata from the PyPI JSON API.
+func (c *PyPIClient) FetchJSONAPI(name string, ver version.Version) (*VersionDetail, error) {
 	url := c.jsonAPIURL + name + "/" + ver.String() + "/json"
 	resp, err := c.httpClient.Get(url)
 	if err != nil {

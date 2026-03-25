@@ -54,7 +54,7 @@ func (c *CachedClient) GetVersionDetail(name string, ver version.Version) (*Vers
 		}
 	}
 
-	detail, err := c.client.GetVersionDetail(name, ver)
+	detail, err := c.fetchVersionDetail(name, ver)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +66,24 @@ func (c *CachedClient) GetVersionDetail(name string, ver version.Version) (*Vers
 
 	c.details.Store(key, detail)
 	return detail, nil
+}
+
+// fetchVersionDetail routes to PEP 658 or JSON API based on cached PackageInfo.
+func (c *CachedClient) fetchVersionDetail(name string, ver version.Version) (*VersionDetail, error) {
+	normalized := pep508.NormalizeName(name)
+
+	// If we have PackageInfo cached, use it to decide the fetch strategy.
+	if v, ok := c.packages.Load(normalized); ok {
+		info := v.(*PackageInfo)
+		wheel := info.BestWheel(ver)
+		if wheel != nil && wheel.CoreMetadata {
+			return c.client.FetchPEP658Metadata(wheel.URL + ".metadata")
+		}
+		return c.client.FetchJSONAPI(normalized, ver)
+	}
+
+	// No PackageInfo cached — fall back to full path.
+	return c.client.GetVersionDetail(name, ver)
 }
 
 func (c *CachedClient) getFromResolutionCache(name string, ver version.Version) *VersionDetail {
