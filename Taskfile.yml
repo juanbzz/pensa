@@ -40,3 +40,9 @@ tasks:
     cmds:
       - task: vet
       - task: test
+
+  docs:
+    desc: Serve docs site locally
+    dir: docs
+    cmds:
+      - hugo server --buildDrafts
