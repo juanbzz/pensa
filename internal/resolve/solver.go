@@ -87,6 +87,7 @@ type Solver struct {
 	incompatibilities map[string][]*Incompatibility
 	contradicted      map[*Incompatibility]bool
 	solution          *PartialSolution
+	priorities        map[string]int
 }
 
 // NewSolver creates a new PubGrub solver.
@@ -98,6 +99,7 @@ func NewSolver(provider Provider, root string, rootDeps []Dependency) *Solver {
 		incompatibilities: make(map[string][]*Incompatibility),
 		contradicted:      make(map[*Incompatibility]bool),
 		solution:          NewPartialSolution(),
+		priorities:        make(map[string]int),
 	}
 }
 
@@ -125,8 +127,8 @@ func (s *Solver) Solve() (*SolverResult, error) {
 	}
 
 	for iterations := 0; ; iterations++ {
-		if iterations > 1000 {
-			return nil, fmt.Errorf("solver: exceeded 1000 iterations")
+		if iterations > 10000 {
+			return nil, fmt.Errorf("solver: exceeded 10000 iterations")
 		}
 		pkg, err := s.choosePackageVersion()
 		if err != nil {
@@ -371,13 +373,37 @@ func (s *Solver) chooseBest(pkgs []string) string {
 	if len(pkgs) == 1 {
 		return pkgs[0]
 	}
-	sort.Strings(pkgs)
-	return pkgs[0]
+
+	best := pkgs[0]
+	bestPri := s.priorities[best]
+
+	for _, pkg := range pkgs[1:] {
+		pri := s.priorities[pkg]
+		if pri > bestPri {
+			best = pkg
+			bestPri = pri
+		}
+	}
+	return best
+}
+
+func constraintPriority(c version.Constraint) int {
+	if version.IsSingleton(c) {
+		return 100
+	}
+	if !c.IsAny() {
+		return 50
+	}
+	return 10
 }
 
 func (s *Solver) addIncompatibility(incompat *Incompatibility) {
 	for _, t := range incompat.Terms {
 		s.incompatibilities[t.Pkg] = append(s.incompatibilities[t.Pkg], incompat)
+		// Update priority based on constraint shape — tighter constraints get higher priority.
+		if pri := constraintPriority(t.Constraint); pri > s.priorities[t.Pkg] {
+			s.priorities[t.Pkg] = pri
+		}
 	}
 }
 

@@ -24,6 +24,12 @@ var (
 	_ Constraint = (*anyConstraint)(nil)
 )
 
+// IsSingleton returns true if the constraint matches exactly one version.
+func IsSingleton(c Constraint) bool {
+	_, ok := c.(*exactConstraint)
+	return ok
+}
+
 // --- anyConstraint ---
 
 type anyConstraint struct{}

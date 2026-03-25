@@ -1,6 +1,10 @@
 package version
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/matryer/is"
+)
 
 func mustParse(t *testing.T, s string) Version {
 	t.Helper()
@@ -239,6 +243,20 @@ func TestAnyConstraint(t *testing.T) {
 	if !a.Allows(mustParse(t, "999.0")) {
 		t.Error("any should allow everything")
 	}
+}
+
+func TestIsSingleton(t *testing.T) {
+	assert := is.New(t)
+
+	assert.True(IsSingleton(ExactVersion(mustParse(t, "1.0.0"))))
+	assert.True(!IsSingleton(AnyConstraint()))
+	assert.True(!IsSingleton(EmptyConstraint()))
+
+	r := NewRange(ptr(mustParse(t, "1.0")), ptr(mustParse(t, "2.0")), true, false)
+	assert.True(!IsSingleton(r))
+
+	u := NewUnion(ExactVersion(mustParse(t, "1.0")), ExactVersion(mustParse(t, "2.0")))
+	assert.True(!IsSingleton(u))
 }
 
 func ptr(v Version) *Version {
