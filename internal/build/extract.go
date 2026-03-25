@@ -2,6 +2,7 @@ package build
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -9,6 +10,14 @@ import (
 	"path/filepath"
 	"strings"
 )
+
+func validatePath(dest, name string) (string, error) {
+	target := filepath.Join(dest, name)
+	if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)+string(os.PathSeparator)) {
+		return "", fmt.Errorf("invalid file path in archive: %s", name)
+	}
+	return target, nil
+}
 
 func ExtractTarGz(src, dest string) error {
 	file, err := os.Open(src)
@@ -35,9 +44,9 @@ func ExtractTarGz(src, dest string) error {
 		}
 
 		// sanitize path to prevent directory traversal and zip slip attacks
-		target := filepath.Join(dest, header.Name)
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)+string(os.PathSeparator)) {
-			return fmt.Errorf("invalid file path in archive: %s", header.Name)
+		target, err := validatePath(dest, header.Name)
+		if err != nil {
+			return err
 		}
 
 		switch header.Typeflag {
@@ -49,21 +58,67 @@ func ExtractTarGz(src, dest string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 				return fmt.Errorf("create parent directory: %w", err)
 			}
-			f, err := os.Create(target)
-			if err != nil {
-				return fmt.Errorf("create file: %w", err)
-			}
-			if _, err := io.Copy(f, tarReader); err != nil {
-				f.Close() // best effort to close file before returning error
-				return fmt.Errorf("copy file contents: %w", err)
-			}
-			if err := f.Close(); err != nil {
-				return fmt.Errorf("close file: %w", err)
+			if err := extractToFile(tarReader, target); err != nil {
+				return err
 			}
 		default:
 			// skip symlinks, hard links, and other special file types
 			continue
 		}
+	}
+	return nil
+}
+
+func ExtractZip(src, dest string) error {
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return fmt.Errorf("open zip file: %w", err)
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		path, err := validatePath(dest, f.Name)
+		if err != nil {
+			return fmt.Errorf("sanitize path: %w", err)
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(path, 0755); err != nil {
+				return fmt.Errorf("create directory: %w", err)
+			}
+			// skip going into the directory since zip files list all entries with full paths
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return fmt.Errorf("create parent directory: %w", err)
+		}
+		if err := extractZipFile(f, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extractZipFile(f *zip.File, dest string) error {
+	rc, err := f.Open()
+	if err != nil {
+		return fmt.Errorf("open zip entry: %w", err)
+	}
+	defer rc.Close()
+
+	return extractToFile(rc, dest)
+}
+
+func extractToFile(r io.Reader, dest string) error {
+	f, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, r); err != nil {
+		return fmt.Errorf("copy file contents: %w", err)
 	}
 	return nil
 }

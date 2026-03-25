@@ -2,6 +2,7 @@ package build
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"github.com/matryer/is"
@@ -42,6 +43,27 @@ func createTarGz(t *testing.T, files []testEntry) []byte {
 
 	tw.Close()
 	gw.Close()
+
+	return buf.Bytes()
+}
+
+func createZip(t *testing.T, files []testEntry) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	for _, entry := range files {
+		f, err := zw.Create(entry.Name)
+		if err != nil {
+			t.Fatalf("create zip entry: %v", err)
+		}
+
+		if _, err := f.Write([]byte(entry.Content)); err != nil {
+			t.Fatalf("write zip content: %v", err)
+		}
+	}
+	zw.Close()
 
 	return buf.Bytes()
 }
@@ -115,4 +137,43 @@ func TestExtractTarGz_SkipsSymLinks(t *testing.T) {
 	link := filepath.Join(destDir, "link.txt")
 	_, err = os.Lstat(link)
 	assert.True(os.IsNotExist(err))
+}
+
+func TestExtractZip(t *testing.T) {
+	assert := is.New(t)
+
+	zipFile := createZip(t, []testEntry{
+		{Name: "pkg/file.txt", Content: "hello"},
+	})
+
+	srcDir := t.TempDir()
+	destDir := t.TempDir()
+	tmpFile := filepath.Join(srcDir, "test.zip")
+	err := os.WriteFile(tmpFile, zipFile, 0644)
+	assert.NoErr(err)
+
+	err = ExtractZip(tmpFile, destDir)
+	assert.NoErr(err)
+
+	extractedFile := filepath.Join(destDir, "pkg/file.txt")
+	data, err := os.ReadFile(extractedFile)
+	assert.NoErr(err)
+	assert.Equal(string(data), "hello")
+}
+
+func TestExtractZip_ZipSlip(t *testing.T) {
+	assert := is.New(t)
+
+	zipFile := createZip(t, []testEntry{
+		{Name: "../../etc/passwd", Content: "evil"},
+	})
+
+	srcDir := t.TempDir()
+	destDir := t.TempDir()
+	tmpFile := filepath.Join(srcDir, "test.zip")
+	err := os.WriteFile(tmpFile, zipFile, 0644)
+	assert.NoErr(err)
+
+	err = ExtractZip(tmpFile, destDir)
+	assert.True(err != nil) // extraction should be rejected
 }
