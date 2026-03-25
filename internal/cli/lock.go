@@ -248,7 +248,12 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		fmt.Fprintf(w, "  %s %s\n", dim("•"), m.Name)
 	}
 
-	// Collect deps from all members.
+	// Collect deps from all members, skipping workspace sources.
+	rawSources := ws.Project.WorkspaceSources()
+	wsSources := make(map[string]bool, len(rawSources))
+	for name := range rawSources {
+		wsSources[normalizeName(name)] = true
+	}
 	depGroups := make(map[string][]string)
 	depExtras := make(map[string][]string)
 	seen := make(map[string]bool)
@@ -262,6 +267,12 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 
 		for _, gd := range groupedDeps {
 			normalized := normalizeName(gd.Dep.Name)
+
+			// Skip workspace members — they're installed locally, not from PyPI.
+			if wsSources[normalized] {
+				continue
+			}
+
 			depGroups[normalized] = append(depGroups[normalized], gd.Group)
 			if len(gd.Dep.Extras) > 0 {
 				depExtras[normalized] = append(depExtras[normalized], gd.Dep.Extras...)

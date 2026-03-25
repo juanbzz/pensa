@@ -50,12 +50,19 @@ type ToolTable struct {
 
 // PensaTable represents [tool.pensa].
 type PensaTable struct {
-	Workspace *WorkspaceConfig `toml:"workspace,omitempty"`
+	Workspace *WorkspaceConfig       `toml:"workspace,omitempty"`
+	Sources   map[string]SourceEntry `toml:"sources,omitempty"`
 }
 
 // UVTable represents [tool.uv].
 type UVTable struct {
-	Workspace *WorkspaceConfig `toml:"workspace,omitempty"`
+	Workspace *WorkspaceConfig       `toml:"workspace,omitempty"`
+	Sources   map[string]SourceEntry `toml:"sources,omitempty"`
+}
+
+// SourceEntry represents a dependency source override.
+type SourceEntry struct {
+	Workspace bool `toml:"workspace,omitempty"`
 }
 
 // WorkspaceConfig represents workspace member configuration.
@@ -184,4 +191,26 @@ func (p *PyProject) WorkspaceMembers() []string {
 // IsWorkspaceRoot returns true if this pyproject defines a workspace.
 func (p *PyProject) IsWorkspaceRoot() bool {
 	return len(p.WorkspaceMembers()) > 0
+}
+
+// WorkspaceSources returns dep names that are workspace members (not PyPI packages).
+// Checks [tool.pensa.sources] first, then [tool.uv.sources].
+func (p *PyProject) WorkspaceSources() map[string]bool {
+	result := make(map[string]bool)
+	var sources map[string]SourceEntry
+
+	if p.Tool != nil {
+		if p.Tool.Pensa != nil && len(p.Tool.Pensa.Sources) > 0 {
+			sources = p.Tool.Pensa.Sources
+		} else if p.Tool.UV != nil && len(p.Tool.UV.Sources) > 0 {
+			sources = p.Tool.UV.Sources
+		}
+	}
+
+	for name, entry := range sources {
+		if entry.Workspace {
+			result[name] = true
+		}
+	}
+	return result
 }
