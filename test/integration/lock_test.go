@@ -208,7 +208,7 @@ func TestDropIn_PoetryAddThenPensaAdd(t *testing.T) {
 
 	// Poetry creates a project and adds requests.
 	execInDir(t, container, "/work",
-		"poetry init -n --name test-project --python '>=3.9'")
+		"poetry init -n --name test-project --python '>=3.10'")
 	execInDir(t, container, "/work", "poetry add requests")
 
 	// Verify Poetry state.

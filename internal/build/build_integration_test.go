@@ -7,6 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/matryer/is"
+
+	"github.com/juanbzz/pensa/internal/python"
 )
 
 func TestBuild_Integration(t *testing.T) {
@@ -169,6 +173,54 @@ build-backend = "hatchling.build"
 	if err == nil {
 		t.Fatal("expected error when no package directory exists for editable build")
 	}
+}
+
+func TestBuildFromSdist_Integration(t *testing.T) {
+	assert := is.New(t)
+	dir := t.TempDir()
+
+	// Create a minimal Python project.
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "testpkg"
+version = "0.1.0"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+
+	pkgDir := filepath.Join(dir, "testpkg")
+	os.MkdirAll(pkgDir, 0755)
+	os.WriteFile(filepath.Join(pkgDir, "__init__.py"), []byte(""), 0644)
+
+	// Build an sdist from the project.
+	sdistDir := filepath.Join(dir, "sdist-out")
+	sdistResult, err := Build(Options{
+		ProjectDir: dir,
+		OutputDir:  sdistDir,
+		Sdist:      true,
+	})
+	assert.NoErr(err)
+	assert.Equal(len(sdistResult.Files), 1)
+
+	// Build a wheel from that sdist.
+	py, err := python.Discover()
+	assert.NoErr(err)
+
+	wheelDir := filepath.Join(dir, "wheel-out")
+	wheelPath, err := BuildFromSdist(SdistBuildOptions{
+		Name:      "testpkg",
+		Version:   "0.1.0",
+		SdistPath: sdistResult.Files[0],
+		OutputDir: wheelDir,
+		Python:    py,
+	})
+	assert.NoErr(err)
+	assert.True(strings.HasSuffix(filepath.Base(wheelPath), ".whl"))
+
+	_, err = os.Stat(wheelPath)
+	assert.NoErr(err)
 }
 
 func TestBuild_NoBuildSystem(t *testing.T) {

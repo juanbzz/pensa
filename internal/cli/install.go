@@ -165,7 +165,7 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 	for _, pkg := range toInstall {
 		pkg := pkg
 		g.Go(func() error {
-			path, err := ins.DownloadPackage(pkg)
+			path, err := ins.ResolvePackage(pkg)
 			if err != nil {
 				return fmt.Errorf("download %s: %w", pkg.Name, err)
 			}
