@@ -2,7 +2,7 @@ package build
 
 import "github.com/juanbzz/pensa/internal/python"
 
-func BuildFromSdist(opts SdistBuildOptions) (string, error)
+//func BuildFromSdist(opts SdistBuildOptions) (string, error)
 
 type SdistBuildOptions struct {
 	Name      string // package name
