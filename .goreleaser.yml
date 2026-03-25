@@ -36,7 +36,7 @@ changelog:
 
 brews:
   - repository:
-      owner: juanbzz
+      owner: pensa-sh
       name: homebrew-tap
     homepage: https://github.com/juanbzz/pensa
     description: "A fast enough Python package and project manager, written in Go"

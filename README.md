@@ -31,20 +31,13 @@ pensa began as a Poetry port to Go but found its own direction by following the 
 
 ## Install
 
-Install script (recommended):
+Homebrew:
 
 ```
-curl -fsSL https://pensa.sh/install | bash
+brew install pensa-sh/tap/pensa
 ```
 
-Other methods:
-
-```
-pip install pensa          # PyPI
-pipx install pensa         # isolated install
-npm install -g pensa       # npm
-brew install pensa-sh/tap/pensa  # Homebrew
-```
+Or download a binary from [GitHub Releases](https://github.com/juanbzz/pensa/releases).
 
 ## Getting started
 
