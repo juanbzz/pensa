@@ -171,7 +171,7 @@ print(result)
 		return "", fmt.Errorf("invoke %s: %w", hook, err)
 	}
 
-	filename := strings.TrimSpace(string(out))
+	filename := lastLine(string(out))
 	if filename == "" {
 		return "", fmt.Errorf("%s returned empty filename", hook)
 	}
