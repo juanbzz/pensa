@@ -38,6 +38,7 @@ brews:
   - repository:
       owner: pensa-sh
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/juanbzz/pensa
     description: "A fast enough Python package and project manager, written in Go"
     license: MIT
