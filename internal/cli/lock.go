@@ -3,6 +3,7 @@ package cli
 import (
 	"crypto/sha256"
 	"fmt"
+	"github.com/adrg/xdg"
 	"io"
 	"os"
 	"path/filepath"
@@ -76,8 +77,8 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	}
 
 	// Build resolver deps (all groups resolved together) and track group membership + extras.
-	depGroups := make(map[string][]string)   // normalized name → groups
-	depExtras := make(map[string][]string)   // normalized name → requested extras
+	depGroups := make(map[string][]string) // normalized name → groups
+	depExtras := make(map[string][]string) // normalized name → requested extras
 	seen := make(map[string]bool)
 	var resolverDeps []resolve.Dependency
 
@@ -154,10 +155,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 }
 
 func newPyPIClient() (*index.PyPIClient, error) {
-	cacheDir, err := defaultCacheDir()
-	if err != nil {
-		return nil, err
-	}
+	cacheDir := defaultCacheDir()
 	return index.NewPyPIClient(
 		index.WithCache(index.NewCache(cacheDir)),
 	), nil
@@ -360,12 +358,8 @@ func computeWorkspaceHash(ws *workspace.Workspace) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-func defaultCacheDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("get home directory: %w", err)
-	}
-	return filepath.Join(home, ".cache", "pensa"), nil
+func defaultCacheDir() string {
+	return filepath.Join(xdg.CacheHome, "pensa")
 }
 
 func computeContentHash(pyprojectPath string) string {

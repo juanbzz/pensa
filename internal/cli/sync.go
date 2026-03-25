@@ -16,12 +16,12 @@ import (
 
 // venvSkipPackages are infrastructure packages that should never be removed.
 var venvSkipPackages = map[string]bool{
-	"pip":              true,
-	"setuptools":       true,
-	"wheel":            true,
-	"pkg-resources":    true,
-	"distutils-hack":   true,
-	"-distutils-hack":  true,
+	"pip":             true,
+	"setuptools":      true,
+	"wheel":           true,
+	"pkg-resources":   true,
+	"distutils-hack":  true,
+	"-distutils-hack": true,
 }
 
 func newSyncCmd() *cobra.Command {
@@ -133,7 +133,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	// Install missing.
 	if len(toInstall) > 0 {
-		cacheDir, err := defaultCacheDir()
+		cacheDir := defaultCacheDir()
 		if err != nil {
 			return err
 		}
