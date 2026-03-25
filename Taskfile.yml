@@ -27,9 +27,6 @@ tasks:
 
   test:integration:
     desc: Run integration tests (requires Docker)
-    env:
-      DOCKER_HOST: unix:///Users/juanolvera/.colima/default/docker.sock
-      TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: /var/run/docker.sock
     cmds:
       - go test -tags=integration -timeout 300s -v ./test/integration/
 
