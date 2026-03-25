@@ -2,7 +2,10 @@ package resolve
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/matryer/is"
 
 	"github.com/juanbzz/pensa/pkg/version"
 )
@@ -279,10 +282,49 @@ func TestSolver_Conflict(t *testing.T) {
 		{Pkg: "b", Constraint: mustParseConstraint(t, "^1.0")},
 	})
 
+	assert := is.New(t)
+
 	_, err := solver.Solve()
-	if err == nil {
-		t.Error("expected conflict error")
+	assert.True(err != nil)
+
+	msg := err.Error()
+	assert.True(strings.Contains(msg, "version solving failed:"))
+	assert.True(strings.Contains(msg, "depends on c"))
+	assert.True(!strings.Contains(msg, "$root"))
+	assert.True(!strings.Contains(msg, "{"))
+}
+
+func TestSolver_ConflictShowsProjectName(t *testing.T) {
+	assert := is.New(t)
+
+	// root → a >=2.0, b ^1.0
+	// b 1.0 → a <2.0
+	// Root directly conflicts with b's dependency on a.
+	provider := &mockProvider{
+		packages: map[string][]mockPackage{
+			"a": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: nil},
+				{ver: mustParseVersion(t, "2.0.0"), deps: nil},
+			},
+			"b": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: []Dependency{
+					{Pkg: "a", Constraint: mustParseConstraint(t, "<2.0")},
+				}},
+			},
+		},
 	}
+
+	solver := NewSolver(provider, "myproject", []Dependency{
+		{Pkg: "a", Constraint: mustParseConstraint(t, ">=2.0")},
+		{Pkg: "b", Constraint: mustParseConstraint(t, "^1.0")},
+	})
+
+	_, err := solver.Solve()
+	assert.True(err != nil)
+
+	msg := err.Error()
+	assert.True(strings.Contains(msg, "myproject"))
+	assert.True(!strings.Contains(msg, "$root"))
 }
 
 func TestSolver_NoDependencies(t *testing.T) {
