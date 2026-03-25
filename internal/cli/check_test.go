@@ -2,14 +2,13 @@ package cli
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/juanbzz/pensa/internal/lockfile"
+	"github.com/juanbzz/pensa/internal/pyproject"
 )
 
 // setupCheckTest creates a temp dir with matching pyproject.toml and poetry.lock.
@@ -33,9 +32,9 @@ requests = "^2.31"
 		t.Fatal(err)
 	}
 
-	// Update lock file with correct content hash.
-	h := sha256.Sum256([]byte(pyprojectContent))
-	lf.Metadata.ContentHash = fmt.Sprintf("%x", h)
+	// Update lock file with correct content hash (dep-only hash).
+	proj, _ := pyproject.ParsePyProject([]byte(pyprojectContent))
+	lf.Metadata.ContentHash = proj.DependencyHash()
 	if err := lockfile.WriteLockFile(filepath.Join(dir, "poetry.lock"), lf); err != nil {
 		t.Fatal(err)
 	}
@@ -99,16 +98,16 @@ func TestCheck_NoPyproject(t *testing.T) {
 func TestCheck_HashMismatch(t *testing.T) {
 	dir := setupCheckTest(t)
 
-	// Modify pyproject.toml to change the hash.
+	// Modify pyproject.toml to change a dependency (triggers hash mismatch).
 	pyprojectPath := filepath.Join(dir, "pyproject.toml")
 	os.WriteFile(pyprojectPath, []byte(`[tool.poetry]
 name = "test-project"
-version = "0.2.0"
-description = "modified"
+version = "0.1.0"
+description = ""
 
 [tool.poetry.dependencies]
 python = "^3.8"
-requests = "^2.31"
+requests = "^3.0"
 `), 0644)
 
 	cmd := newRootCmd()
@@ -145,9 +144,9 @@ flask = "^3.0"
 	os.WriteFile(pyprojectPath, []byte(pyprojectContent), 0644)
 
 	// Update lock hash to match new pyproject (so only the missing dep is reported).
-	h := sha256.Sum256([]byte(pyprojectContent))
+	proj, _ := pyproject.ParsePyProject([]byte(pyprojectContent))
 	lf := testLockFile()
-	lf.Metadata.ContentHash = fmt.Sprintf("%x", h)
+	lf.Metadata.ContentHash = proj.DependencyHash()
 	lockfile.WriteLockFile(filepath.Join(dir, "poetry.lock"), lf)
 
 	cmd := newRootCmd()

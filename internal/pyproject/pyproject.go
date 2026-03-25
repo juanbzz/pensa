@@ -1,6 +1,8 @@
 package pyproject
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -213,4 +215,54 @@ func (p *PyProject) WorkspaceSources() map[string]bool {
 		}
 	}
 	return result
+}
+
+// DependencyHash returns a SHA-256 hash of only the dependency-relevant fields.
+// Changes to non-dep fields (version, description, authors, etc.) produce the same hash.
+func (p *PyProject) DependencyHash() string {
+	type depInput struct {
+		RequiresPython       string                        `json:"rp,omitempty"`
+		Dependencies         []string                      `json:"d,omitempty"`
+		OptionalDependencies map[string][]string           `json:"od,omitempty"`
+		DependencyGroups     map[string][]interface{}      `json:"dg,omitempty"`
+		PoetryDeps           map[string]interface{}        `json:"pd,omitempty"`
+		PoetryGroups         map[string]PoetryGroup        `json:"pg,omitempty"`
+		PoetryExtras         map[string][]string           `json:"pe,omitempty"`
+		PoetrySources        []PoetrySource                `json:"ps,omitempty"`
+		Sources              map[string]SourceEntry        `json:"s,omitempty"`
+		Workspace            *WorkspaceConfig              `json:"w,omitempty"`
+		BuildRequires        []string                      `json:"br,omitempty"`
+	}
+
+	var input depInput
+	if p.Project != nil {
+		input.RequiresPython = p.Project.RequiresPython
+		input.Dependencies = p.Project.Dependencies
+		input.OptionalDependencies = p.Project.OptionalDependencies
+	}
+	input.DependencyGroups = p.DependencyGroups
+	if p.Tool != nil {
+		if p.Tool.Poetry != nil {
+			input.PoetryDeps = p.Tool.Poetry.Dependencies
+			input.PoetryGroups = p.Tool.Poetry.Groups
+			input.PoetryExtras = p.Tool.Poetry.Extras
+			input.PoetrySources = p.Tool.Poetry.Source
+		}
+		if p.Tool.Pensa != nil {
+			input.Sources = p.Tool.Pensa.Sources
+			input.Workspace = p.Tool.Pensa.Workspace
+		} else if p.Tool.UV != nil {
+			input.Sources = p.Tool.UV.Sources
+			input.Workspace = p.Tool.UV.Workspace
+		}
+	}
+	if p.BuildSystem != nil {
+		input.BuildRequires = p.BuildSystem.Requires
+	}
+
+	h := sha256.New()
+	enc := json.NewEncoder(h)
+	enc.SetEscapeHTML(false)
+	enc.Encode(input)
+	return fmt.Sprintf("%x", h.Sum(nil))
 }

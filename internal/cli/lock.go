@@ -385,16 +385,16 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 }
 
 // computeWorkspaceHash computes a combined content hash from all workspace members.
+// Only dependency-relevant fields are included — changes to version, description,
+// etc. won't trigger a re-resolve.
 func computeWorkspaceHash(ws *workspace.Workspace) string {
 	h := sha256.New()
-	// Include root pyproject.
-	if data, err := os.ReadFile(filepath.Join(ws.Root, "pyproject.toml")); err == nil {
-		h.Write(data)
+	if proj, err := pyproject.ReadPyProject(filepath.Join(ws.Root, "pyproject.toml")); err == nil {
+		h.Write([]byte(proj.DependencyHash()))
 	}
-	// Include each member's pyproject.
 	for _, m := range ws.Members {
-		if data, err := os.ReadFile(filepath.Join(m.Path, "pyproject.toml")); err == nil {
-			h.Write(data)
+		if proj, err := pyproject.ReadPyProject(filepath.Join(m.Path, "pyproject.toml")); err == nil {
+			h.Write([]byte(proj.DependencyHash()))
 		}
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
@@ -467,10 +467,9 @@ func prefetchLockedVersions(client *index.CachedClient, lf *lockfile.LockFile) {
 }
 
 func computeContentHash(pyprojectPath string) string {
-	data, err := os.ReadFile(pyprojectPath)
+	proj, err := pyproject.ReadPyProject(pyprojectPath)
 	if err != nil {
 		return ""
 	}
-	h := sha256.Sum256(data)
-	return fmt.Sprintf("%x", h)
+	return proj.DependencyHash()
 }
