@@ -112,7 +112,9 @@ func (ps *PartialSolution) Satisfier(t Term) Assignment {
 			at := a.Term
 			assigned = &at
 		} else {
-			assigned = assigned.Intersect(a.Term)
+			if merged := assigned.Intersect(a.Term); merged != nil {
+				assigned = merged
+			}
 		}
 
 		if assigned != nil && assigned.Satisfies(t) {

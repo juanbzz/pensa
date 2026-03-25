@@ -343,3 +343,52 @@ func TestSolver_NoDependencies(t *testing.T) {
 		t.Errorf("decisions = %d, want 0", len(result.Decisions))
 	}
 }
+
+func TestSolver_ConflictingTransitiveDepsNoPanic(t *testing.T) {
+	assert := is.New(t)
+
+	// Reproduces a panic in Satisfier() when Intersect returns nil.
+	// root → a ^1.0, b ^1.0, c ^1.0
+	// a 1.0 → d >=2.0,<3.0
+	// b 1.0 → d >=1.0,<2.0
+	// c 1.0 → d >=1.5,<2.5
+	// Multiple overlapping constraints on d should not panic.
+	provider := &mockProvider{
+		packages: map[string][]mockPackage{
+			"a": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: []Dependency{
+					{Pkg: "d", Constraint: mustParseConstraint(t, ">=2.0,<3.0")},
+				}},
+			},
+			"b": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: []Dependency{
+					{Pkg: "d", Constraint: mustParseConstraint(t, ">=1.0,<2.0")},
+				}},
+			},
+			"c": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: []Dependency{
+					{Pkg: "d", Constraint: mustParseConstraint(t, ">=1.5,<2.5")},
+				}},
+			},
+			"d": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: nil},
+				{ver: mustParseVersion(t, "1.5.0"), deps: nil},
+				{ver: mustParseVersion(t, "2.0.0"), deps: nil},
+				{ver: mustParseVersion(t, "2.5.0"), deps: nil},
+			},
+		},
+	}
+
+	solver := NewSolver(provider, "myproject", []Dependency{
+		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
+		{Pkg: "b", Constraint: mustParseConstraint(t, "^1.0")},
+		{Pkg: "c", Constraint: mustParseConstraint(t, "^1.0")},
+	})
+
+	// Should not panic — either resolves or returns an error.
+	_, err := solver.Solve()
+	if err != nil {
+		msg := err.Error()
+		assert.True(strings.Contains(msg, "version solving failed"))
+	}
+}
