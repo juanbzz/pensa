@@ -3,6 +3,7 @@ package resolve
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/juanbzz/pensa/pkg/version"
 )
@@ -13,10 +14,69 @@ var conflict = &struct{}{}
 // SolveError indicates the resolver could not find a valid solution.
 type SolveError struct {
 	Incompatibility *Incompatibility
+	Root            string
 }
 
 func (e *SolveError) Error() string {
-	return fmt.Sprintf("version solving failed: %s", e.Incompatibility)
+	conflicts := collectConflicts(e.Incompatibility, map[*Incompatibility]bool{})
+	if len(conflicts) == 0 {
+		return fmt.Sprintf("version solving failed: %s", e.Incompatibility)
+	}
+	projectName := e.Root
+	if projectName == "" {
+		projectName = "your project"
+	}
+	lines := make([]string, len(conflicts))
+	for i, c := range conflicts {
+		lines[i] = "  - " + formatConflict(c, projectName)
+	}
+	return "version solving failed:\n" + strings.Join(lines, "\n")
+}
+
+func collectConflicts(incompat *Incompatibility, seen map[*Incompatibility]bool) []*Incompatibility {
+	if seen[incompat] {
+		return nil
+	}
+	seen[incompat] = true
+
+	if cause, ok := incompat.Cause.(ConflictCause); ok {
+		var result []*Incompatibility
+		result = append(result, collectConflicts(cause.Conflict, seen)...)
+		result = append(result, collectConflicts(cause.Other, seen)...)
+		return result
+	}
+
+	if _, ok := incompat.Cause.(RootCause); ok {
+		return nil
+	}
+
+	return []*Incompatibility{incompat}
+}
+
+func formatConflict(incompat *Incompatibility, projectName string) string {
+	pkg := func(name string) string {
+		if name == rootPkg {
+			return projectName
+		}
+		return name
+	}
+
+	switch incompat.Cause.(type) {
+	case DependencyCause:
+		if len(incompat.Terms) == 2 {
+			depender := incompat.Terms[0]
+			dep := incompat.Terms[1]
+			return fmt.Sprintf("%s (%s) depends on %s (%s)",
+				pkg(depender.Pkg), depender.Constraint,
+				pkg(dep.Pkg), dep.Constraint)
+		}
+	case NoVersionsCause:
+		if len(incompat.Terms) == 1 {
+			return fmt.Sprintf("no versions of %s match %s",
+				pkg(incompat.Terms[0].Pkg), incompat.Terms[0].Constraint)
+		}
+	}
+	return incompat.String()
 }
 
 // Solver implements the PubGrub version solving algorithm.
@@ -203,7 +263,7 @@ func (s *Solver) resolveConflict(incompat *Incompatibility) (*Incompatibility, e
 		}
 
 		if mostRecentSatisfier == nil {
-			return nil, &SolveError{Incompatibility: incompat}
+			return nil, &SolveError{Incompatibility: incompat, Root: s.root}
 		}
 
 		if previousSatisfierLevel < mostRecentSatisfier.DecisionLevel || mostRecentSatisfier.IsDecision() {
@@ -241,7 +301,7 @@ func (s *Solver) resolveConflict(incompat *Incompatibility) (*Incompatibility, e
 		newIncompat = true
 	}
 
-	return nil, &SolveError{Incompatibility: incompat}
+	return nil, &SolveError{Incompatibility: incompat, Root: s.root}
 }
 
 func (s *Solver) choosePackageVersion() (string, error) {
