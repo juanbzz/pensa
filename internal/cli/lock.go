@@ -3,12 +3,14 @@ package cli
 import (
 	"crypto/sha256"
 	"fmt"
-	"github.com/adrg/xdg"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/adrg/xdg"
 
 	"github.com/juanbzz/pensa/internal/index"
 	"github.com/juanbzz/pensa/internal/lockfile"
@@ -106,7 +108,10 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		})
 	}
 
-	baseProvider := &indexProvider{client: client, requestedExtras: depExtras}
+	cached := index.NewCachedClient(client)
+	prefetchPackages(cached, resolverDeps)
+
+	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras}
 
 	// Wrap provider to prefer locked versions unless upgrading.
 	var solverProvider resolve.Provider = baseProvider
@@ -163,7 +168,7 @@ func newPyPIClient() (*index.PyPIClient, error) {
 
 // indexProvider bridges resolve.Provider ↔ index.PyPIClient.
 type indexProvider struct {
-	client          *index.PyPIClient
+	client          *index.CachedClient
 	requestedExtras map[string][]string // normalized pkg name → requested extras
 }
 
@@ -213,6 +218,12 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 			Constraint: constraint,
 		})
 	}
+
+	// Background prefetch: warm the cache for discovered deps.
+	for _, d := range deps {
+		go p.client.GetPackageInfo(d.Pkg)
+	}
+
 	return deps, nil
 }
 
@@ -304,7 +315,10 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		return err
 	}
 
-	baseProvider := &indexProvider{client: client, requestedExtras: depExtras}
+	cached := index.NewCachedClient(client)
+	prefetchPackages(cached, resolverDeps)
+
+	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras}
 
 	// Wrap provider to prefer locked versions unless upgrading.
 	var solverProvider resolve.Provider = baseProvider
@@ -371,6 +385,22 @@ func computeWorkspaceHash(ws *workspace.Workspace) string {
 
 func defaultCacheDir() string {
 	return filepath.Join(xdg.CacheHome, "pensa")
+}
+
+func prefetchPackages(client *index.CachedClient, deps []resolve.Dependency) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8) // limit concurrency
+
+	for _, dep := range deps {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			client.GetPackageInfo(name)
+		}(dep.Pkg)
+	}
+	wg.Wait()
 }
 
 func computeContentHash(pyprojectPath string) string {
