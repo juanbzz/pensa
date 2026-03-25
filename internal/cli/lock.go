@@ -118,7 +118,8 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		})
 	}
 
-	cached := index.NewCachedClient(client)
+	resCache := index.NewResolutionCache(defaultCacheDir())
+	cached := index.NewCachedClient(client, resCache)
 	prefetchPackages(cached, resolverDeps)
 
 	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras}
@@ -326,7 +327,8 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		return err
 	}
 
-	cached := index.NewCachedClient(client)
+	resCache := index.NewResolutionCache(defaultCacheDir())
+	cached := index.NewCachedClient(client, resCache)
 	prefetchPackages(cached, resolverDeps)
 
 	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras}
