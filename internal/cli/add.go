@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/juanbzz/pensa/internal/index"
+	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
 	"github.com/juanbzz/pensa/pkg/pep508"
 	"github.com/juanbzz/pensa/pkg/version"
@@ -51,6 +52,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	group, _ := cmd.Flags().GetString("group")
 
+	// Read existing lock file to check for transitive dependency versions.
+	var lf *lockfile.LockFile
+	if lockPath, _ := lockfile.DetectLockFile(dir); lockPath != "" {
+		lf, _ = lockfile.ReadLockFile(lockPath)
+	}
+
 	for _, arg := range args {
 		name, constraintStr, extras, err := parseAddArg(arg)
 		if err != nil {
@@ -58,13 +65,18 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		name = pep508.NormalizeName(name)
 
-		// If no constraint specified, find latest version and use caret.
+		// If no constraint specified, check lock file for existing version,
+		// then fall back to latest from PyPI.
 		if constraintStr == "" {
-			latest, err := getLatestVersion(client, name)
-			if err != nil {
-				return fmt.Errorf("find latest version of %s: %w", name, err)
+			if v := lockedVersion(lf, name); v != "" {
+				constraintStr = fmt.Sprintf("^%s", v)
+			} else {
+				latest, err := getLatestVersion(client, name)
+				if err != nil {
+					return fmt.Errorf("find latest version of %s: %w", name, err)
+				}
+				constraintStr = fmt.Sprintf("^%s", latest)
 			}
-			constraintStr = fmt.Sprintf("^%s", latest)
 			fmt.Fprintf(cmd.OutOrStdout(), "Using version %s for %s\n", bold(constraintStr), bold(name))
 		}
 
@@ -163,6 +175,18 @@ func getLatestVersion(client *index.PyPIClient, name string) (version.Version, e
 	}
 	// Fall back to latest (even if pre-release).
 	return versions[0], nil
+}
+
+func lockedVersion(lf *lockfile.LockFile, name string) string {
+	if lf == nil {
+		return ""
+	}
+	for _, pkg := range lf.Packages {
+		if pep508.NormalizeName(pkg.Name) == name {
+			return pkg.Version
+		}
+	}
+	return ""
 }
 
 // addToProject adds a dependency to the appropriate section of pyproject.toml.
