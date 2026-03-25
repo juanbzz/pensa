@@ -102,7 +102,7 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 	}
 
 	// Create installer.
-	cacheDir, err := defaultCacheDir()
+	cacheDir := defaultCacheDir()
 	if err != nil {
 		return err
 	}
