@@ -40,6 +40,10 @@ func runLock(cmd *cobra.Command, args []string) error {
 	// Check for workspace.
 	ws, _ := workspace.Discover(dir)
 	if ws != nil {
+		if lockCurrentWorkspace(ws) {
+			fmt.Fprintln(cmd.OutOrStdout(), green("Lock file is up to date."))
+			return nil
+		}
 		return runLockWorkspace(cmd.OutOrStdout(), ws, lockOptions{})
 	}
 
@@ -57,6 +61,12 @@ func runLock(cmd *cobra.Command, args []string) error {
 
 	if len(allDeps) == 0 {
 		fmt.Fprintln(cmd.OutOrStdout(), yellow("No dependencies to lock."))
+		return nil
+	}
+
+	// Skip resolution if lock file is current.
+	if lockCurrent(pyprojectPath, dir) {
+		fmt.Fprintln(cmd.OutOrStdout(), green("Lock file is up to date."))
 		return nil
 	}
 
@@ -120,6 +130,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		if lockPath != "" {
 			if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
 				solverProvider = newLockedProvider(baseProvider, lf, opts.upgradePackages)
+				prefetchLockedVersions(cached, lf)
 			}
 		}
 	}
@@ -327,6 +338,7 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		if lockPath != "" {
 			if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
 				solverProvider = newLockedProvider(baseProvider, lf, opts.upgradePackages)
+				prefetchLockedVersions(cached, lf)
 			}
 		}
 	}
@@ -339,8 +351,11 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		result, solveErr = solver.Solve()
 		return solveErr
 	}); err != nil {
+	
 		return fmt.Errorf("resolve: %w", err)
 	}
+
+
 
 	pythonVersions := ">=3.8"
 	if ws.Project.HasProjectSection() && ws.Project.Project.RequiresPython != "" {
@@ -399,6 +414,52 @@ func prefetchPackages(client *index.CachedClient, deps []resolve.Dependency) {
 			defer func() { <-sem }()
 			client.GetPackageInfo(name)
 		}(dep.Pkg)
+	}
+	wg.Wait()
+}
+
+func lockCurrent(pyprojectPath, dir string) bool {
+	lockPath, _ := lockfile.DetectLockFile(dir)
+	if lockPath == "" {
+		return false
+	}
+	lf, err := lockfile.ReadLockFile(lockPath)
+	if err != nil {
+		return false
+	}
+	hash := computeContentHash(pyprojectPath)
+	return hash != "" && lf.Metadata.ContentHash != "" && hash == lf.Metadata.ContentHash
+}
+
+func lockCurrentWorkspace(ws *workspace.Workspace) bool {
+	lockPath, _ := lockfile.DetectLockFile(ws.Root)
+	if lockPath == "" {
+		return false
+	}
+	lf, err := lockfile.ReadLockFile(lockPath)
+	if err != nil {
+		return false
+	}
+	hash := computeWorkspaceHash(ws)
+	return hash != "" && lf.Metadata.ContentHash != "" && hash == lf.Metadata.ContentHash
+}
+
+func prefetchLockedVersions(client *index.CachedClient, lf *lockfile.LockFile) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+
+	for _, pkg := range lf.Packages {
+		ver, err := version.Parse(pkg.Version)
+		if err != nil {
+			continue
+		}
+		wg.Add(1)
+		go func(name string, v version.Version) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			client.GetVersionDetail(name, v)
+		}(pkg.Name, ver)
 	}
 	wg.Wait()
 }
