@@ -79,7 +79,7 @@ func ExtractZip(src, dest string) error {
 	for _, f := range r.File {
 		path, err := validatePath(dest, f.Name)
 		if err != nil {
-			return fmt.Errorf("sanitize path: %w", err)
+			return err
 		}
 
 		if f.FileInfo().IsDir() {
@@ -98,6 +98,17 @@ func ExtractZip(src, dest string) error {
 		}
 	}
 	return nil
+}
+
+func ExtractSdist(src, dest string) error {
+	switch {
+	case strings.HasSuffix(src, ".tar.gz") || strings.HasSuffix(src, ".tgz"):
+		return ExtractTarGz(src, dest)
+	case strings.HasSuffix(src, ".zip"):
+		return ExtractZip(src, dest)
+	default:
+		return fmt.Errorf("unsupported sdist format: %s", src)
+	}
 }
 
 func extractZipFile(f *zip.File, dest string) error {

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/python"
 	"github.com/juanbzz/pensa/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/python"
 )
 
 // lastLine returns the last non-empty line from a string (for clean error messages).
@@ -59,20 +59,14 @@ func Build(opts Options) (*Result, error) {
 	}
 	defer os.RemoveAll(buildVenv)
 
-	venvCmd := exec.Command(py.Path, "-m", "venv", buildVenv)
-	venvCmd.Stderr = os.Stderr
-	if err := venvCmd.Run(); err != nil {
+	venvPython, err := createVenv(py.Path, buildVenv)
+	if err != nil {
 		return nil, fmt.Errorf("create build venv: %w", err)
 	}
 
-	venvPython := filepath.Join(buildVenv, "bin", "python")
-
 	// Install build dependencies (suppress pip output).
 	if len(proj.BuildSystem.Requires) > 0 {
-		args := append([]string{"-m", "pip", "install", "--quiet", "--disable-pip-version-check"}, proj.BuildSystem.Requires...)
-		cmd := exec.Command(venvPython, args...)
-		cmd.Dir = opts.ProjectDir
-		if err := cmd.Run(); err != nil {
+		if err := installDeps(venvPython, proj.BuildSystem.Requires); err != nil {
 			return nil, fmt.Errorf("install build dependencies: %w", err)
 		}
 	}
@@ -91,10 +85,7 @@ func Build(opts Options) (*Result, error) {
 	if opts.Editable {
 		// Get extra build deps for editable installs (e.g., hatchling needs 'editables').
 		if extraDeps, err := getEditableBuildDeps(venvPython, opts.ProjectDir, backendModule, backendObject); err == nil && len(extraDeps) > 0 {
-			args := append([]string{"-m", "pip", "install", "--quiet", "--disable-pip-version-check"}, extraDeps...)
-			installCmd := exec.Command(venvPython, args...)
-			installCmd.Dir = opts.ProjectDir
-			installCmd.Run() // best-effort
+			installDeps(venvPython, extraDeps) // best-effort, don't fail if this doesn't work
 		}
 
 		file, err := invokeBuildHook(venvPython, opts.ProjectDir, opts.OutputDir, backendModule, backendObject, "build_editable")
@@ -237,4 +228,22 @@ else:
 		}
 	}
 	return deps, nil
+}
+
+func createVenv(pythonPath, venvPath string) (string, error) {
+	cmd := exec.Command(pythonPath, "-m", "venv", venvPath)
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("create venv: %w", err)
+	}
+
+	return filepath.Join(venvPath, "bin", "python"), nil
+}
+
+func installDeps(pythonPath string, deps []string) error {
+	args := append([]string{"-m", "pip", "install", "--quiet", "--disable-pip-version-check"}, deps...)
+	cmd := exec.Command(pythonPath, args...)
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
