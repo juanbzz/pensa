@@ -210,5 +210,8 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 		}
 	}
 
+	// Mark venv as in sync for auto-sync detection.
+	writeSyncMarker(venvPath)
+
 	return nil
 }

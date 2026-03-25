@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/matryer/is"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -35,6 +36,31 @@ func buildPensa(t *testing.T) string {
 		t.Fatalf("build pensa: %s\n%s", err, out)
 	}
 	return bin
+}
+
+func setupPensaContainer(t *testing.T) testcontainers.Container {
+	t.Helper()
+	ctx := context.Background()
+
+	pensaBin := buildPensa(t)
+
+	container, err := testcontainers.Run(ctx, "python:3.11-slim",
+		testcontainers.WithCmd("sleep", "infinity"),
+	)
+	if err != nil {
+		t.Fatalf("start container: %v", err)
+	}
+	t.Cleanup(func() { testcontainers.CleanupContainer(t, container) })
+
+	execInContainer(t, container, "mkdir", "-p", "/work")
+
+	if err := container.CopyFileToContainer(ctx, pensaBin, "/usr/local/bin/pensa", 0755); err != nil {
+		t.Fatalf("copy pensa to container: %v", err)
+	}
+
+	execInContainer(t, container, "pensa", "version")
+
+	return container
 }
 
 func setupContainer(t *testing.T) testcontainers.Container {
@@ -252,4 +278,45 @@ func TestDropIn_PoetryAddThenPensaAdd(t *testing.T) {
 	if !strings.Contains(pensaOutput, "Resolved") {
 		t.Error("pensa add didn't print resolution summary")
 	}
+}
+
+func TestRun_AutoSync(t *testing.T) {
+	assert := is.New(t)
+	container := setupPensaContainer(t)
+
+	// Create a minimal project with a dependency.
+	execInContainer(t, container, "sh", "-c", `cat > /work/pyproject.toml << 'EOF'
+[project]
+name = "testproject"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["six"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+EOF`)
+
+	// Lock the project.
+	execInDir(t, container, "/work", "pensa lock")
+
+	// Run without a venv — auto-sync should create it and install.
+	output := execInDir(t, container, "/work", "pensa run python -c 'import six; print(six.__version__)' 2>&1")
+	t.Logf("First run output:\n%s", output)
+
+	assert.True(strings.Contains(output, "syncing venv"))
+	assert.True(strings.Contains(output, "1."))
+
+	// Run again — should skip sync.
+	output2 := execInDir(t, container, "/work", "pensa run python -c 'import six; print(six.__version__)' 2>&1")
+	t.Logf("Second run output:\n%s", output2)
+
+	assert.True(!strings.Contains(output2, "syncing venv"))
+
+	// Run with --no-sync.
+	output3 := execInDir(t, container, "/work", "pensa run --no-sync python -c 'print(\"skipped\")' 2>&1")
+	t.Logf("--no-sync output:\n%s", output3)
+
+	assert.True(!strings.Contains(output3, "syncing venv"))
+	assert.True(strings.Contains(output3, "skipped"))
 }
