@@ -27,14 +27,17 @@ func TestShow_PackageDetail(t *testing.T) {
 	if !strings.Contains(out, "2.31.0") {
 		t.Error("missing version")
 	}
-	if !strings.Contains(out, "Python HTTP for Humans.") {
-		t.Error("missing description")
+	if !strings.Contains(out, "Requires:") {
+		t.Error("missing Requires line")
 	}
 	if !strings.Contains(out, "certifi") {
 		t.Error("missing dependency certifi")
 	}
 	if !strings.Contains(out, "urllib3") {
 		t.Error("missing dependency urllib3")
+	}
+	if !strings.Contains(out, "Required-by:") {
+		t.Error("missing Required-by line")
 	}
 }
 
