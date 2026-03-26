@@ -22,8 +22,18 @@ func NewCachedClient(client *PyPIClient, resCache *ResolutionCache) *CachedClien
 }
 
 func (c *CachedClient) GetPackageInfo(name string) (*PackageInfo, error) {
-	if v, ok := c.packages.Load(name); ok {
+	normalized := pep508.NormalizeName(name)
+	if v, ok := c.packages.Load(normalized); ok {
 		return v.(*PackageInfo), nil
+	}
+
+	// Check resolution cache for a fast reconstruct (avoids parsing large JSON).
+	if c.resCache != nil {
+		if pkg, err := c.resCache.Get(normalized); err == nil && len(pkg.Versions) > 0 {
+			info := pkg.ToPackageInfo()
+			c.packages.Store(normalized, info)
+			return info, nil
+		}
 	}
 
 	info, err := c.client.GetPackageInfo(name)
@@ -36,7 +46,7 @@ func (c *CachedClient) GetPackageInfo(name string) (*PackageInfo, error) {
 		go c.updateResolutionCache(info)
 	}
 
-	c.packages.Store(name, info)
+	c.packages.Store(normalized, info)
 	return info, nil
 }
 

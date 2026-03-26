@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/juanbzz/pensa/pkg/pep508"
 	"github.com/vmihailenco/msgpack/v5"
@@ -17,15 +18,17 @@ type ResolutionEntry struct {
 
 // ResolutionPackage stores all resolver-relevant data for a package.
 type ResolutionPackage struct {
-	Name     string                       `msgpack:"n"`
-	Versions []string                     `msgpack:"vs"`
-	Deps     map[string]ResolutionEntry   `msgpack:"ds"` // version string → entry
-	PEP658   bool                         `msgpack:"p"`  // whether PEP 658 metadata is available
+	Name      string                     `msgpack:"n"`
+	Versions  []string                   `msgpack:"vs"`
+	Deps      map[string]ResolutionEntry `msgpack:"ds"` // version string → entry
+	PEP658    bool                       `msgpack:"p"`  // whether PEP 658 metadata is available
+	WheelURLs map[string]string          `msgpack:"wu"` // version → best wheel URL (PEP 658 only)
 }
 
 // ResolutionCache provides fast binary cache for resolver metadata.
 type ResolutionCache struct {
 	dir string
+	mem sync.Map // string → *ResolutionPackage
 }
 
 func NewResolutionCache(cacheDir string) *ResolutionCache {
@@ -35,6 +38,10 @@ func NewResolutionCache(cacheDir string) *ResolutionCache {
 }
 
 func (rc *ResolutionCache) Get(name string) (*ResolutionPackage, error) {
+	if v, ok := rc.mem.Load(name); ok {
+		return v.(*ResolutionPackage), nil
+	}
+
 	path := filepath.Join(rc.dir, name+".msgpack")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -44,10 +51,12 @@ func (rc *ResolutionCache) Get(name string) (*ResolutionPackage, error) {
 	if err := msgpack.Unmarshal(data, &pkg); err != nil {
 		return nil, err
 	}
+	rc.mem.Store(name, &pkg)
 	return &pkg, nil
 }
 
 func (rc *ResolutionCache) Put(pkg *ResolutionPackage) error {
+	rc.mem.Store(pkg.Name, pkg)
 	data, err := msgpack.Marshal(pkg)
 	if err != nil {
 		return err
@@ -96,6 +105,25 @@ func formatDep(d pep508.Dependency) string {
 	return s
 }
 
+// ToPackageInfo reconstructs a minimal PackageInfo from cached data.
+// The result is sufficient for Versions() and BestWheel() during resolution.
+func (rp *ResolutionPackage) ToPackageInfo() *PackageInfo {
+	info := &PackageInfo{Name: rp.Name}
+	safeName := strings.ReplaceAll(rp.Name, "-", "_")
+	for _, vs := range rp.Versions {
+		filename := safeName + "-" + vs + "-py3-none-any.whl"
+		fi := FileInfo{Filename: filename}
+		if rp.PEP658 {
+			fi.CoreMetadata = true
+			if url, ok := rp.WheelURLs[vs]; ok {
+				fi.URL = url
+			}
+		}
+		info.Files = append(info.Files, fi)
+	}
+	return info
+}
+
 // FromPackageInfo creates a ResolutionPackage with version list from PackageInfo.
 func FromPackageInfo(info *PackageInfo) *ResolutionPackage {
 	versions := info.Versions()
@@ -113,10 +141,22 @@ func FromPackageInfo(info *PackageInfo) *ResolutionPackage {
 		}
 	}
 
+	// Store best wheel URLs for PEP 658 packages.
+	var wheelURLs map[string]string
+	if pep658 {
+		wheelURLs = make(map[string]string)
+		for _, v := range versions {
+			if wheel := info.BestWheel(v); wheel != nil {
+				wheelURLs[v.String()] = wheel.URL
+			}
+		}
+	}
+
 	return &ResolutionPackage{
-		Name:     info.Name,
-		Versions: vs,
-		Deps:     make(map[string]ResolutionEntry),
-		PEP658:   pep658,
+		Name:      info.Name,
+		Versions:  vs,
+		Deps:      make(map[string]ResolutionEntry),
+		PEP658:    pep658,
+		WheelURLs: wheelURLs,
 	}
 }

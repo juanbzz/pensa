@@ -190,3 +190,143 @@ func TestCachedClient_FallsBackWithoutPackageInfo(t *testing.T) {
 	// Falls back to old path: fetchPEP658Metadata calls GetPackageInfo internally.
 	is.Equal(simpleHits.Load(), int32(1))
 }
+
+func TestCachedClient_GetPackageInfo_FromResolutionCache(t *testing.T) {
+	is := is.New(t)
+
+	var simpleHits atomic.Int32
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/simple/mypkg/", func(w http.ResponseWriter, r *http.Request) {
+		simpleHits.Add(1)
+		t.Error("Simple API should not be called when resolution cache has versions")
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := &PyPIClient{
+		baseURL:    server.URL + "/simple/",
+		jsonAPIURL: server.URL + "/pypi/",
+		httpClient: server.Client(),
+	}
+
+	// Pre-populate resolution cache.
+	resCache := NewResolutionCache(t.TempDir())
+	resCache.Put(&ResolutionPackage{
+		Name:     "mypkg",
+		Versions: []string{"2.0.0", "1.0.0"},
+		Deps:     map[string]ResolutionEntry{},
+		PEP658:   false,
+	})
+
+	cached := NewCachedClient(client, resCache)
+
+	// GetPackageInfo should use resolution cache, not hit the server.
+	info, err := cached.GetPackageInfo("mypkg")
+	is.NoErr(err)
+	is.Equal(info.Name, "mypkg")
+
+	versions := info.Versions()
+	is.Equal(len(versions), 2)
+	is.Equal(simpleHits.Load(), int32(0))
+}
+
+func TestCachedClient_GetPackageInfo_FromResolutionCache_PEP658(t *testing.T) {
+	is := is.New(t)
+
+	var metadataHits atomic.Int32
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/files/mypkg-1.0.0-py3-none-any.whl.metadata", func(w http.ResponseWriter, r *http.Request) {
+		metadataHits.Add(1)
+		w.Write([]byte("Metadata-Version: 2.1\nName: mypkg\nVersion: 1.0.0\nRequires-Dist: flask>=2.0\n"))
+	})
+
+	client := &PyPIClient{
+		baseURL:    server.URL + "/simple/",
+		jsonAPIURL: server.URL + "/pypi/",
+		httpClient: server.Client(),
+	}
+
+	// Pre-populate resolution cache with PEP 658 + wheel URL.
+	resCache := NewResolutionCache(t.TempDir())
+	resCache.Put(&ResolutionPackage{
+		Name:     "mypkg",
+		Versions: []string{"1.0.0"},
+		Deps:     map[string]ResolutionEntry{},
+		PEP658:   true,
+		WheelURLs: map[string]string{
+			"1.0.0": server.URL + "/files/mypkg-1.0.0-py3-none-any.whl",
+		},
+	})
+
+	cached := NewCachedClient(client, resCache)
+
+	// GetPackageInfo from resolution cache.
+	info, err := cached.GetPackageInfo("mypkg")
+	is.NoErr(err)
+
+	// BestWheel should have CoreMetadata + URL from cached data.
+	v1, _ := version.Parse("1.0.0")
+	wheel := info.BestWheel(v1)
+	is.True(wheel != nil)
+	is.True(wheel.CoreMetadata)
+
+	// fetchVersionDetail should use PEP 658 via the cached wheel URL.
+	detail, err := cached.GetVersionDetail("mypkg", v1)
+	is.NoErr(err)
+	is.Equal(detail.Name, "mypkg")
+	is.Equal(len(detail.Dependencies), 1)
+	is.Equal(detail.Dependencies[0].Name, "flask")
+	is.Equal(metadataHits.Load(), int32(1))
+}
+
+func TestResolutionPackage_ToPackageInfo_RoundTrip(t *testing.T) {
+	is := is.New(t)
+
+	// Create a PackageInfo with PEP 658 wheels.
+	original := &PackageInfo{
+		Name: "my-pkg",
+		Files: []FileInfo{
+			{
+				Filename:     "my_pkg-1.0.0-py3-none-any.whl",
+				URL:          "https://example.com/my_pkg-1.0.0-py3-none-any.whl",
+				CoreMetadata: true,
+			},
+			{
+				Filename:     "my_pkg-2.0.0-py3-none-any.whl",
+				URL:          "https://example.com/my_pkg-2.0.0-py3-none-any.whl",
+				CoreMetadata: true,
+			},
+			{
+				Filename: "my_pkg-1.0.0.tar.gz",
+				URL:      "https://example.com/my_pkg-1.0.0.tar.gz",
+			},
+		},
+	}
+
+	// Convert to ResolutionPackage and back.
+	rp := FromPackageInfo(original)
+	is.Equal(rp.PEP658, true)
+	is.Equal(len(rp.WheelURLs), 2)
+
+	reconstructed := rp.ToPackageInfo()
+	is.Equal(reconstructed.Name, "my-pkg")
+
+	// Versions should match.
+	origVersions := original.Versions()
+	reconVersions := reconstructed.Versions()
+	is.Equal(len(reconVersions), len(origVersions))
+
+	// BestWheel should preserve CoreMetadata + URL.
+	v1, _ := version.Parse("1.0.0")
+	origWheel := original.BestWheel(v1)
+	reconWheel := reconstructed.BestWheel(v1)
+	is.True(reconWheel != nil)
+	is.Equal(reconWheel.CoreMetadata, origWheel.CoreMetadata)
+	is.Equal(reconWheel.URL, origWheel.URL)
+}
