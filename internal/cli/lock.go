@@ -142,7 +142,8 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		}
 	}
 
-	solver := resolve.NewSolver(solverProvider, proj.Name(), resolverDeps)
+	prefetcher := newPrefetchProvider(solverProvider, cached, cfg.ConcurrentDownloads)
+	solver := resolve.NewSolver(prefetcher, proj.Name(), resolverDeps)
 
 	var result *resolve.SolverResult
 	if err := withSpinnerMsg(w, blue("Resolving dependencies..."), "", func() error {
@@ -364,7 +365,8 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		}
 	}
 
-	solver := resolve.NewSolver(solverProvider, ws.Project.Name(), resolverDeps)
+	prefetcher := newPrefetchProvider(solverProvider, cached, cfg.ConcurrentDownloads)
+	solver := resolve.NewSolver(prefetcher, ws.Project.Name(), resolverDeps)
 
 	var result *resolve.SolverResult
 	if err := withSpinnerMsg(w, blue("Resolving dependencies..."), "", func() error {

@@ -15,6 +15,7 @@ type CachedClient struct {
 	resCache  *ResolutionCache
 	packages  sync.Map // string → *PackageInfo
 	details   sync.Map // string → *VersionDetail
+	resMu     sync.Mutex // protects resolution cache read-modify-write
 }
 
 func NewCachedClient(client *PyPIClient, resCache *ResolutionCache) *CachedClient {
@@ -117,12 +118,14 @@ func (c *CachedClient) getFromResolutionCache(name string, ver version.Version) 
 }
 
 func (c *CachedClient) updateResolutionCache(info *PackageInfo) {
+	c.resMu.Lock()
+	defer c.resMu.Unlock()
+
 	normalized := pep508.NormalizeName(info.Name)
 	existing, _ := c.resCache.Get(normalized)
 	if existing == nil {
 		existing = FromPackageInfo(info)
 	} else {
-		// Update version list but keep existing deps.
 		fresh := FromPackageInfo(info)
 		fresh.Deps = existing.Deps
 		existing = fresh
@@ -131,6 +134,9 @@ func (c *CachedClient) updateResolutionCache(info *PackageInfo) {
 }
 
 func (c *CachedClient) storeInResolutionCache(name string, detail *VersionDetail) {
+	c.resMu.Lock()
+	defer c.resMu.Unlock()
+
 	normalized := pep508.NormalizeName(name)
 	pkg, _ := c.resCache.Get(normalized)
 	if pkg == nil {
