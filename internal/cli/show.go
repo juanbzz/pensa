@@ -54,5 +54,5 @@ func showPackageDetail(w interface{ Write([]byte) (int, error) }, lf *lockfile.L
 		}
 	}
 
-	return fmt.Errorf("package %q not found in poetry.lock", name)
+	return fmt.Errorf("package %q not found in lock file", name)
 }

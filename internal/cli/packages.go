@@ -9,6 +9,7 @@ import (
 
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/workspace"
 )
 
 // normalizeName lowercases and replaces underscores with hyphens for comparison.
@@ -16,12 +17,17 @@ func normalizeName(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, "_", "-"))
 }
 
-// readLockFileFromCwd reads the lock file from the current working directory.
+// readLockFileFromCwd reads the lock file from the current or workspace root directory.
 // Auto-detects format: pensa.lock, uv.lock, or poetry.lock.
 func readLockFileFromCwd() (*lockfile.LockFile, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("get working directory: %w", err)
+	}
+
+	// Check workspace root first.
+	if ws, _ := workspace.Discover(dir); ws != nil {
+		dir = ws.Root
 	}
 
 	lockPath, _ := lockfile.DetectLockFile(dir)
