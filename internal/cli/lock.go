@@ -429,8 +429,35 @@ func lockCurrent(pyprojectPath, dir string) bool {
 	if err != nil {
 		return false
 	}
+
+	// Fast path: content hash match.
 	hash := computeContentHash(pyprojectPath)
-	return hash != "" && lf.Metadata.ContentHash != "" && hash == lf.Metadata.ContentHash
+	if hash != "" && lf.Metadata.ContentHash != "" && hash == lf.Metadata.ContentHash {
+		return true
+	}
+
+	// Slow path: structural validation.
+	proj, err := pyproject.ReadPyProject(pyprojectPath)
+	if err != nil {
+		return false
+	}
+	deps, err := proj.ResolveAllDependencies()
+	if err != nil {
+		return false
+	}
+
+	requiresPython := ""
+	if proj.HasProjectSection() && proj.Project.RequiresPython != "" {
+		requiresPython = proj.Project.RequiresPython
+	}
+
+	reqs := groupedDepsToRequirements(deps)
+	result := lockfile.Satisfies(lf, reqs, requiresPython)
+	if result.Satisfied {
+		// Update the content hash so the next run hits the fast path.
+		lockfile.UpdateContentHash(lockPath, hash)
+	}
+	return result.Satisfied
 }
 
 func lockCurrentWorkspace(ws *workspace.Workspace) bool {
@@ -442,8 +469,60 @@ func lockCurrentWorkspace(ws *workspace.Workspace) bool {
 	if err != nil {
 		return false
 	}
+
+	// Fast path: content hash match.
 	hash := computeWorkspaceHash(ws)
-	return hash != "" && lf.Metadata.ContentHash != "" && hash == lf.Metadata.ContentHash
+	if hash != "" && lf.Metadata.ContentHash != "" && hash == lf.Metadata.ContentHash {
+		return true
+	}
+
+	// Slow path: structural validation across all members.
+	wsSources := make(map[string]bool)
+	for name := range ws.Project.WorkspaceSources() {
+		wsSources[normalizeName(name)] = true
+	}
+
+	var allDeps []pep508.Dependency
+	seen := make(map[string]bool)
+	for _, member := range ws.Members {
+		groupedDeps, err := member.Project.ResolveAllDependencies()
+		if err != nil {
+			return false
+		}
+		for _, gd := range groupedDeps {
+			name := normalizeName(gd.Dep.Name)
+			if wsSources[name] || seen[name] {
+				continue
+			}
+			seen[name] = true
+			allDeps = append(allDeps, gd.Dep)
+		}
+	}
+
+	requiresPython := ""
+	if ws.Project.HasProjectSection() && ws.Project.Project.RequiresPython != "" {
+		requiresPython = ws.Project.Project.RequiresPython
+	}
+
+	result := lockfile.Satisfies(lf, allDeps, requiresPython)
+	if result.Satisfied {
+		lockfile.UpdateContentHash(lockPath, hash)
+	}
+	return result.Satisfied
+}
+
+func groupedDepsToRequirements(deps []pyproject.GroupedDependency) []pep508.Dependency {
+	seen := make(map[string]bool)
+	var reqs []pep508.Dependency
+	for _, gd := range deps {
+		name := normalizeName(gd.Dep.Name)
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		reqs = append(reqs, gd.Dep)
+	}
+	return reqs
 }
 
 func prefetchLockedVersions(client *index.CachedClient, lf *lockfile.LockFile) {

@@ -127,6 +127,30 @@ func WriteLockFile(path string, lf *LockFile) error {
 	return os.WriteFile(path, []byte(b.String()), 0644)
 }
 
+// UpdateContentHash replaces the content-hash in an existing lock file on disk.
+func UpdateContentHash(lockPath, newHash string) error {
+	if newHash == "" {
+		return nil
+	}
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+	// Find and replace the content-hash line.
+	const prefix = "content-hash = "
+	idx := strings.Index(content, prefix)
+	if idx < 0 {
+		return nil
+	}
+	lineEnd := strings.IndexByte(content[idx:], '\n')
+	if lineEnd < 0 {
+		lineEnd = len(content) - idx
+	}
+	updated := content[:idx] + fmt.Sprintf("content-hash = %q", newHash) + content[idx+lineEnd:]
+	return os.WriteFile(lockPath, []byte(updated), 0644)
+}
+
 // BuildLockFile creates a LockFile from resolver results and package metadata.
 // depGroups maps normalized package names to their dependency groups.
 // Transitive deps not in depGroups are assigned to "main".
