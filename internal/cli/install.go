@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	goRuntime "runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/python"
 	"github.com/juanbzz/pensa/internal/workspace"
+	"github.com/juanbzz/pensa/pkg/version"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -126,6 +129,10 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 		if installed[normalizeName(pkg.Name)] == pkg.Version {
 			continue
 		}
+		// Skip packages incompatible with current Python.
+		if !compatibleWithPython(pkg, py) {
+			continue
+		}
 		toInstall = append(toInstall, pkg)
 	}
 
@@ -212,3 +219,98 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 
 	return nil
 }
+
+// compatibleWithPython checks whether a locked package is compatible with
+// the current Python interpreter. Skips packages whose python-versions
+// constraint excludes the current Python, or that have wheels but none
+// matching the current CPython version.
+func compatibleWithPython(pkg lockfile.LockedPackage, py *python.PythonInfo) bool {
+	pyVer, err := version.Parse(fmt.Sprintf("%d.%d.%d", py.Major, py.Minor, py.Patch))
+	if err != nil {
+		return true // can't parse, don't skip
+	}
+
+	// Check python-versions constraint.
+	if pkg.PythonVersions != "" {
+		constraint, err := version.ParseConstraint(pkg.PythonVersions)
+		if err == nil && !constraint.Allows(pyVer) {
+			return false
+		}
+	}
+
+	// Check if any wheel is compatible with current CPython.
+	if !hasCompatibleWheel(pkg.Files, py) {
+		return false
+	}
+
+	return true
+}
+
+// hasCompatibleWheel checks if at least one wheel in the file list matches
+// the current Python version and platform. Returns true if no wheels exist (sdist-only).
+func hasCompatibleWheel(files []lockfile.PackageFile, py *python.PythonInfo) bool {
+	cpTag := fmt.Sprintf("cp%d%d", py.Major, py.Minor)
+	hasWheel := false
+
+	for _, f := range files {
+		if !strings.HasSuffix(f.File, ".whl") {
+			continue
+		}
+		hasWheel = true
+
+		// Universal wheels always match.
+		if strings.Contains(f.File, "-py3-none-any") || strings.Contains(f.File, "-py2.py3-none-any") {
+			return true
+		}
+
+		// Check Python version tag.
+		if !strings.Contains(f.File, cpTag) && !strings.Contains(f.File, "-py3-") {
+			continue
+		}
+
+		// Check platform tag — skip wheels for other platforms.
+		if !wheelMatchesPlatform(f.File) {
+			continue
+		}
+
+		return true
+	}
+
+	// No wheels at all → sdist-only package, allow it.
+	return !hasWheel
+}
+
+// wheelMatchesPlatform checks if a wheel filename is compatible with the
+// current OS. Wheel filenames end with {python}-{abi}-{platform}.whl.
+func wheelMatchesPlatform(filename string) bool {
+	// Platform-independent.
+	if strings.Contains(filename, "-any.whl") {
+		return true
+	}
+
+	switch {
+	case strings.Contains(filename, "macosx") || strings.Contains(filename, "darwin"):
+		return isDarwin()
+	case strings.Contains(filename, "manylinux") || strings.Contains(filename, "musllinux") || strings.Contains(filename, "linux"):
+		return isLinux()
+	case strings.Contains(filename, "win32") || strings.Contains(filename, "win_amd64") || strings.Contains(filename, "win_arm64"):
+		return isWindows()
+	}
+
+	return true // unknown platform tag, don't skip
+}
+
+func isDarwin() bool  { return strings.Contains(strings.ToLower(currentOS()), "darwin") }
+func isLinux() bool   { return strings.Contains(strings.ToLower(currentOS()), "linux") }
+func isWindows() bool { return strings.Contains(strings.ToLower(currentOS()), "windows") }
+
+func currentOS() string {
+	// Use runtime.GOOS at the call site for testability.
+	return currentOSValue
+}
+
+// Set at init time from runtime.GOOS.
+var currentOSValue = func() string {
+	// Deferred import to keep the import block clean.
+	return goRuntime.GOOS
+}()
