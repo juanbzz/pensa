@@ -41,7 +41,7 @@ func (c *CachedClient) GetPackageInfo(name string) (*PackageInfo, error) {
 		return nil, err
 	}
 
-	// Update resolution cache with version list.
+	// Update resolution cache with version list (in-memory only; flushed later).
 	if c.resCache != nil {
 		go c.updateResolutionCache(info)
 	}
@@ -69,7 +69,7 @@ func (c *CachedClient) GetVersionDetail(name string, ver version.Version) (*Vers
 		return nil, err
 	}
 
-	// Store in resolution cache for next run.
+	// Store in resolution cache for next run (in-memory only; flushed later).
 	if c.resCache != nil {
 		go c.storeInResolutionCache(name, detail)
 	}

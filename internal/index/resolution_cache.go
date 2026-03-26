@@ -26,9 +26,11 @@ type ResolutionPackage struct {
 }
 
 // ResolutionCache provides fast binary cache for resolver metadata.
+// Writes are batched in memory and flushed to disk via Flush().
 type ResolutionCache struct {
-	dir string
-	mem sync.Map // string → *ResolutionPackage
+	dir   string
+	mem   sync.Map // string → *ResolutionPackage
+	dirty sync.Map // string → bool (names needing disk flush)
 }
 
 func NewResolutionCache(cacheDir string) *ResolutionCache {
@@ -55,14 +57,29 @@ func (rc *ResolutionCache) Get(name string) (*ResolutionPackage, error) {
 	return &pkg, nil
 }
 
+// Put updates the in-memory cache and marks the entry for disk flush.
+// No disk I/O happens here — call Flush() to persist.
 func (rc *ResolutionCache) Put(pkg *ResolutionPackage) error {
 	rc.mem.Store(pkg.Name, pkg)
-	data, err := msgpack.Marshal(pkg)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(rc.dir, pkg.Name+".msgpack")
-	return os.WriteFile(path, data, 0644)
+	rc.dirty.Store(pkg.Name, true)
+	return nil
+}
+
+// Flush writes all dirty entries to disk and clears the dirty set.
+func (rc *ResolutionCache) Flush() {
+	rc.dirty.Range(func(key, _ any) bool {
+		name := key.(string)
+		if v, ok := rc.mem.Load(name); ok {
+			pkg := v.(*ResolutionPackage)
+			data, err := msgpack.Marshal(pkg)
+			if err == nil {
+				path := filepath.Join(rc.dir, name+".msgpack")
+				os.WriteFile(path, data, 0644)
+			}
+		}
+		rc.dirty.Delete(name)
+		return true
+	})
 }
 
 // ToVersionDetail converts a ResolutionEntry back to a VersionDetail.

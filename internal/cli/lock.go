@@ -128,7 +128,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	cached := index.NewCachedClient(client, resCache)
 	prefetchPackages(cached, resolverDeps, cfg.ConcurrentDownloads)
 
-	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras}
+	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras, prefetchSem: make(chan struct{}, cfg.ConcurrentDownloads)}
 
 	// Wrap provider to prefer locked versions unless upgrading.
 	var solverProvider resolve.Provider = baseProvider
@@ -152,6 +152,9 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	}); err != nil {
 		return fmt.Errorf("resolve: %w", err)
 	}
+
+	// Flush resolution cache to disk in a single batch.
+	resCache.Flush()
 
 	pythonVersions := ">=3.8"
 	if proj.HasProjectSection() && proj.Project.RequiresPython != "" {
@@ -188,6 +191,7 @@ func newPyPIClient() (*index.PyPIClient, error) {
 type indexProvider struct {
 	client          *index.CachedClient
 	requestedExtras map[string][]string // normalized pkg name → requested extras
+	prefetchSem     chan struct{}       // bounds background prefetch concurrency
 }
 
 func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
@@ -239,7 +243,11 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 
 	// Background prefetch: warm the cache for discovered deps.
 	for _, d := range deps {
-		go p.client.GetPackageInfo(d.Pkg)
+		go func(name string) {
+			p.prefetchSem <- struct{}{}
+			defer func() { <-p.prefetchSem }()
+			p.client.GetPackageInfo(name)
+		}(d.Pkg)
 	}
 
 	return deps, nil
@@ -342,7 +350,7 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 	cached := index.NewCachedClient(client, resCache)
 	prefetchPackages(cached, resolverDeps, cfg.ConcurrentDownloads)
 
-	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras}
+	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras, prefetchSem: make(chan struct{}, cfg.ConcurrentDownloads)}
 
 	// Wrap provider to prefer locked versions unless upgrading.
 	var solverProvider resolve.Provider = baseProvider
@@ -364,11 +372,11 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		result, solveErr = solver.Solve()
 		return solveErr
 	}); err != nil {
-	
 		return fmt.Errorf("resolve: %w", err)
 	}
 
-
+	// Flush resolution cache to disk in a single batch.
+	resCache.Flush()
 
 	pythonVersions := ">=3.8"
 	if ws.Project.HasProjectSection() && ws.Project.Project.RequiresPython != "" {
