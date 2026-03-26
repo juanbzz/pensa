@@ -526,3 +526,227 @@ build-backend = "hatchling.build"
 	// six should be resolved.
 	assert.True(strings.Contains(lockContent, "six"))
 }
+
+// setupInterDepWorkspace creates a workspace where member A depends on member B.
+// api depends on ["my-lib" (workspace), "six" (PyPI)]
+// lib depends on ["certifi" (PyPI)]
+// Transitive: api → my-lib → certifi should all be in the lock.
+func setupInterDepWorkspace(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "interdep-workspace"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.pensa.workspace]
+members = ["services/api", "libs/core"]
+
+[tool.pensa.sources]
+interdep-lib = { workspace = true }
+`), 0644)
+
+	apiDir := filepath.Join(dir, "services", "api")
+	os.MkdirAll(apiDir, 0755)
+	os.WriteFile(filepath.Join(apiDir, "pyproject.toml"), []byte(`
+[project]
+name = "interdep-api"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["interdep-lib", "six>=1.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(apiDir, "interdep_api"), 0755)
+	os.WriteFile(filepath.Join(apiDir, "interdep_api", "__init__.py"), []byte(""), 0644)
+
+	libDir := filepath.Join(dir, "libs", "core")
+	os.MkdirAll(libDir, 0755)
+	os.WriteFile(filepath.Join(libDir, "pyproject.toml"), []byte(`
+[project]
+name = "interdep-lib"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["certifi>=2023.0.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(libDir, "interdep_lib"), 0755)
+	os.WriteFile(filepath.Join(libDir, "interdep_lib", "__init__.py"), []byte(""), 0644)
+
+	return dir
+}
+
+func TestWorkspaceMember_InterDeps_TransitiveDepsInLock(t *testing.T) {
+	assert := is.New(t)
+	dir := setupInterDepWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"lock"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	lockData, _ := os.ReadFile(filepath.Join(dir, "pensa.lock"))
+	lockContent := string(lockData)
+
+	// six: direct dep of api.
+	assert.True(strings.Contains(lockContent, "name = \"six\""))
+	// certifi: transitive dep via api → interdep-lib → certifi.
+	assert.True(strings.Contains(lockContent, "name = \"certifi\""))
+}
+
+func TestWorkspaceMember_InterDeps_MemberNotInLock(t *testing.T) {
+	assert := is.New(t)
+	dir := setupInterDepWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"lock"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	lockData, _ := os.ReadFile(filepath.Join(dir, "pensa.lock"))
+	lockContent := string(lockData)
+
+	// Workspace member should NOT be in lock as a PyPI package.
+	assert.True(!strings.Contains(lockContent, "name = \"interdep-lib\""))
+	assert.True(!strings.Contains(lockContent, "name = \"interdep-api\""))
+}
+
+func TestWorkspaceMember_InterDeps_InstallWorks(t *testing.T) {
+	assert := is.New(t)
+	dir := setupInterDepWorkspace(t)
+	chdir(t, dir)
+
+	// Lock first.
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"lock"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	// Install.
+	cmd = newRootCmd()
+	buf = new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"install"})
+	err = cmd.Execute()
+	assert.NoErr(err)
+
+	out := buf.String()
+	// Should mention installing both members in editable mode.
+	assert.True(strings.Contains(out, "interdep-api") || strings.Contains(out, "interdep-lib") || strings.Contains(out, "up to date"))
+}
+
+// setupChainWorkspace creates A → B → C chain:
+// app depends on ["mid-lib" (workspace)]
+// mid-lib depends on ["base-lib" (workspace)]
+// base-lib depends on ["idna" (PyPI)]
+func setupChainWorkspace(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "chain-workspace"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.pensa.workspace]
+members = ["app", "libs/mid", "libs/base"]
+
+[tool.pensa.sources]
+chain-mid = { workspace = true }
+chain-base = { workspace = true }
+`), 0644)
+
+	appDir := filepath.Join(dir, "app")
+	os.MkdirAll(appDir, 0755)
+	os.WriteFile(filepath.Join(appDir, "pyproject.toml"), []byte(`
+[project]
+name = "chain-app"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["chain-mid", "six>=1.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(appDir, "chain_app"), 0755)
+	os.WriteFile(filepath.Join(appDir, "chain_app", "__init__.py"), []byte(""), 0644)
+
+	midDir := filepath.Join(dir, "libs", "mid")
+	os.MkdirAll(midDir, 0755)
+	os.WriteFile(filepath.Join(midDir, "pyproject.toml"), []byte(`
+[project]
+name = "chain-mid"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["chain-base", "certifi>=2023.0.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(midDir, "chain_mid"), 0755)
+	os.WriteFile(filepath.Join(midDir, "chain_mid", "__init__.py"), []byte(""), 0644)
+
+	baseDir := filepath.Join(dir, "libs", "base")
+	os.MkdirAll(baseDir, 0755)
+	os.WriteFile(filepath.Join(baseDir, "pyproject.toml"), []byte(`
+[project]
+name = "chain-base"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["idna>=3.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(baseDir, "chain_base"), 0755)
+	os.WriteFile(filepath.Join(baseDir, "chain_base", "__init__.py"), []byte(""), 0644)
+
+	return dir
+}
+
+func TestWorkspaceMember_InterDeps_Chain(t *testing.T) {
+	assert := is.New(t)
+	dir := setupChainWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"lock"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	lockData, _ := os.ReadFile(filepath.Join(dir, "pensa.lock"))
+	lockContent := string(lockData)
+
+	// Direct dep of app.
+	assert.True(strings.Contains(lockContent, "name = \"six\""))
+	// Transitive via app → chain-mid.
+	assert.True(strings.Contains(lockContent, "name = \"certifi\""))
+	// Transitive via app → chain-mid → chain-base.
+	assert.True(strings.Contains(lockContent, "name = \"idna\""))
+
+	// No workspace members in lock.
+	assert.True(!strings.Contains(lockContent, "name = \"chain-app\""))
+	assert.True(!strings.Contains(lockContent, "name = \"chain-mid\""))
+	assert.True(!strings.Contains(lockContent, "name = \"chain-base\""))
+}

@@ -286,50 +286,53 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		fmt.Fprintf(w, "  %s %s\n", dim("•"), m.Name)
 	}
 
-	// Collect deps from all members, skipping workspace sources.
+	// Collect deps from all members, inlining workspace member transitive deps.
 	rawSources := ws.Project.WorkspaceSources()
 	wsSources := make(map[string]bool, len(rawSources))
 	for name := range rawSources {
 		wsSources[normalizeName(name)] = true
 	}
-	depGroups := make(map[string][]string)
-	depExtras := make(map[string][]string)
-	seen := make(map[string]bool)
-	var resolverDeps []resolve.Dependency
 
+	// Gather all deps from all members.
+	var allGroupedDeps []pyproject.GroupedDependency
 	for _, member := range ws.Members {
 		groupedDeps, err := member.Project.ResolveAllDependencies()
 		if err != nil {
 			return fmt.Errorf("resolve deps for %s: %w", member.Name, err)
 		}
+		allGroupedDeps = append(allGroupedDeps, groupedDeps...)
+	}
 
-		for _, gd := range groupedDeps {
-			normalized := normalizeName(gd.Dep.Name)
+	// Inline workspace member deps: when A depends on B (workspace member),
+	// replace B with B's own dependencies so they get resolved from PyPI.
+	expandedDeps := inlineWorkspaceDeps(ws, wsSources, allGroupedDeps)
 
-			// Skip workspace members — they're installed locally, not from PyPI.
-			if wsSources[normalized] {
-				continue
-			}
+	depGroups := make(map[string][]string)
+	depExtras := make(map[string][]string)
+	seen := make(map[string]bool)
+	var resolverDeps []resolve.Dependency
 
-			depGroups[normalized] = append(depGroups[normalized], gd.Group)
-			if len(gd.Dep.Extras) > 0 {
-				depExtras[normalized] = append(depExtras[normalized], gd.Dep.Extras...)
-			}
+	for _, gd := range expandedDeps {
+		normalized := normalizeName(gd.Dep.Name)
 
-			if seen[normalized] {
-				continue
-			}
-			seen[normalized] = true
-
-			constraint := gd.Dep.Constraint
-			if constraint == nil {
-				constraint = version.AnyConstraint()
-			}
-			resolverDeps = append(resolverDeps, resolve.Dependency{
-				Pkg:        gd.Dep.Name,
-				Constraint: constraint,
-			})
+		depGroups[normalized] = append(depGroups[normalized], gd.Group)
+		if len(gd.Dep.Extras) > 0 {
+			depExtras[normalized] = append(depExtras[normalized], gd.Dep.Extras...)
 		}
+
+		if seen[normalized] {
+			continue
+		}
+		seen[normalized] = true
+
+		constraint := gd.Dep.Constraint
+		if constraint == nil {
+			constraint = version.AnyConstraint()
+		}
+		resolverDeps = append(resolverDeps, resolve.Dependency{
+			Pkg:        gd.Dep.Name,
+			Constraint: constraint,
+		})
 	}
 
 	if len(resolverDeps) == 0 {
@@ -544,6 +547,41 @@ func groupedDepsToRequirements(deps []pyproject.GroupedDependency) []pep508.Depe
 		reqs = append(reqs, gd.Dep)
 	}
 	return reqs
+}
+
+// inlineWorkspaceDeps expands workspace member dependencies into their
+// transitive PyPI deps. When dep A is a workspace member, it's replaced
+// with A's own dependencies. Handles chains (A → B → C) via BFS.
+func inlineWorkspaceDeps(ws *workspace.Workspace, wsSources map[string]bool, deps []pyproject.GroupedDependency) []pyproject.GroupedDependency {
+	var result []pyproject.GroupedDependency
+	visited := make(map[string]bool)
+	queue := make([]pyproject.GroupedDependency, len(deps))
+	copy(queue, deps)
+
+	for len(queue) > 0 {
+		gd := queue[0]
+		queue = queue[1:]
+
+		normalized := normalizeName(gd.Dep.Name)
+		if visited[normalized] {
+			continue
+		}
+		visited[normalized] = true
+
+		if wsSources[normalized] {
+			// Workspace member — inline its deps instead.
+			if target := ws.FindMember(gd.Dep.Name); target != nil {
+				memberDeps, err := target.Project.ResolveAllDependencies()
+				if err == nil {
+					queue = append(queue, memberDeps...)
+				}
+			}
+			continue
+		}
+
+		result = append(result, gd)
+	}
+	return result
 }
 
 func prefetchLockedVersions(client *index.CachedClient, lf *lockfile.LockFile, concurrency int) {
