@@ -33,6 +33,7 @@ func newLockCmd() *cobra.Command {
 }
 
 func runLock(cmd *cobra.Command, args []string) error {
+	out := uiFromCmd(cmd)
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
@@ -42,10 +43,10 @@ func runLock(cmd *cobra.Command, args []string) error {
 	ws, _ := workspace.Discover(dir)
 	if ws != nil {
 		if lockCurrentWorkspace(ws) {
-			fmt.Fprintln(cmd.OutOrStdout(), green("Lock file is up to date."))
+			out.UpToDate("Lock file is up to date.")
 			return nil
 		}
-		return runLockWorkspace(cmd.OutOrStdout(), ws, lockOptions{})
+		return runLockWorkspace(os.Stderr, ws, lockOptions{})
 	}
 
 	// Single project mode.
@@ -61,17 +62,17 @@ func runLock(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(allDeps) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), yellow("No dependencies to lock."))
+		out.Warning("no dependencies to lock")
 		return nil
 	}
 
 	// Skip resolution if lock file is current.
 	if lockCurrent(pyprojectPath, dir) {
-		fmt.Fprintln(cmd.OutOrStdout(), green("Lock file is up to date."))
+		out.UpToDate("Lock file is up to date.")
 		return nil
 	}
 
-	return resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath, lockOptions{})
+	return resolveAndLock(os.Stderr, proj, pyprojectPath, lockOptions{})
 }
 
 // resolveAndLock runs the full resolve → lock pipeline.

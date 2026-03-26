@@ -71,15 +71,16 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	out := newUI(w, false, false)
 	if len(issues) > 0 {
-		fmt.Fprintf(w, "%s\n", red("check failed:"))
+		out.Error("check failed")
 		for _, issue := range issues {
 			fmt.Fprintf(w, "  %s %s\n", red("-"), issue)
 		}
 		return fmt.Errorf("check failed with %d %s", len(issues), pluralize(len(issues), "issue", "issues"))
 	}
 
-	fmt.Fprintf(w, "%s\n", green("All checks passed."))
+	out.UpToDate("All checks passed.")
 	return nil
 }
 

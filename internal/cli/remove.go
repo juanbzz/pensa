@@ -35,7 +35,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	pkgFlag, _ := cmd.Flags().GetString("package")
 	group, _ := cmd.Flags().GetString("group")
-	w := cmd.OutOrStdout()
+	out := uiFromCmd(cmd)
 
 	// Resolve workspace + target member.
 	ws, _ := workspace.Discover(dir)
@@ -68,7 +68,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 				return err
 			}
 		}
-		fmt.Fprintf(w, "%s %s\n", yellow("Removing"), bold(name))
+		out.Removed(name, "")
 	}
 
 	if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {
@@ -80,7 +80,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		if member != nil {
 			member.Project, _ = pyproject.ReadPyProject(pyprojectPath)
 		}
-		if err := runLockWorkspace(w, ws, lockOptions{}); err != nil {
+		if err := runLockWorkspace(os.Stderr, ws, lockOptions{}); err != nil {
 			return err
 		}
 	} else {
@@ -97,16 +97,16 @@ func runRemove(cmd *cobra.Command, args []string) error {
 			for _, name := range []string{"pensa.lock", "uv.lock", "poetry.lock"} {
 				os.Remove(filepath.Join(dir, name))
 			}
-			fmt.Fprintf(w, "No dependencies remaining.\n")
+			out.Info("No dependencies remaining.")
 			return nil
 		}
 
-		if err := resolveAndLock(w, proj, pyprojectPath, lockOptions{}); err != nil {
+		if err := resolveAndLock(os.Stderr, proj, pyprojectPath, lockOptions{}); err != nil {
 			return err
 		}
 	}
 
-	return installFromLock(w, true, nil)
+	return installFromLock(os.Stderr, true, nil)
 }
 
 // removeFromProject removes a dependency from the appropriate section of pyproject.toml.

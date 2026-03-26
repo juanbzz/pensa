@@ -36,6 +36,7 @@ Specify packages as:
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
+	out := uiFromCmd(cmd)
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
@@ -97,7 +98,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				}
 				constraintStr = fmt.Sprintf("^%s", latest)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Using version %s for %s\n", bold(constraintStr), bold(name))
+			out.Infof("Using version %s for %s", bold(constraintStr), bold(name))
 		}
 
 		if group != "" {
@@ -110,11 +111,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if len(extras) > 0 {
 			displayName = name + "[" + strings.Join(extras, ",") + "]"
 		}
-		groupLabel := ""
-		if group != "" {
-			groupLabel = " " + dim("("+group+" group)")
-		}
-		fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s%s\n", green("Adding"), bold(displayName), dim("("+constraintStr+")"), groupLabel)
+		out.Added(displayName, constraintStr)
 	}
 
 	if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {

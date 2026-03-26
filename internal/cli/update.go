@@ -38,29 +38,27 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
 
+	out := uiFromCmd(cmd)
+
 	if len(deps) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), yellow("No dependencies to update."))
+		out.Warning("no dependencies to update")
 		return nil
 	}
 
-	w := cmd.OutOrStdout()
-
 	opts := lockOptions{}
 	if len(args) == 0 {
-		// Update all — ignore all pinned versions.
 		opts.upgrade = true
-		fmt.Fprintf(w, "%s\n", blue("Updating all dependencies..."))
+		out.Info(blue("Updating all dependencies..."))
 	} else {
-		// Update specific packages only.
 		opts.upgradePackages = args
 		for _, pkg := range args {
-			fmt.Fprintf(w, "%s %s\n", blue("Updating"), bold(pkg))
+			out.Infof("%s %s", blue("Updating"), bold(pkg))
 		}
 	}
 
-	if err := resolveAndLock(w, proj, pyprojectPath, opts); err != nil {
+	if err := resolveAndLock(os.Stderr, proj, pyprojectPath, opts); err != nil {
 		return err
 	}
 
-	return installFromLock(w, true, nil)
+	return installFromLock(os.Stderr, true, nil)
 }
