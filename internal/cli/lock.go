@@ -12,6 +12,7 @@ import (
 
 	"github.com/adrg/xdg"
 
+	"github.com/juanbzz/pensa/internal/config"
 	"github.com/juanbzz/pensa/internal/index"
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
@@ -78,6 +79,11 @@ func runLock(cmd *cobra.Command, args []string) error {
 func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string, opts lockOptions) error {
 	start := time.Now()
 
+	cfg, err := config.New()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
 	groupedDeps, err := proj.ResolveAllDependencies()
 	if err != nil {
 		return fmt.Errorf("resolve dependencies: %w", err)
@@ -120,7 +126,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 
 	resCache := index.NewResolutionCache(defaultCacheDir())
 	cached := index.NewCachedClient(client, resCache)
-	prefetchPackages(cached, resolverDeps)
+	prefetchPackages(cached, resolverDeps, cfg.ConcurrentDownloads)
 
 	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras}
 
@@ -131,7 +137,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		if lockPath != "" {
 			if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
 				solverProvider = newLockedProvider(baseProvider, lf, opts.upgradePackages)
-				prefetchLockedVersions(cached, lf)
+				prefetchLockedVersions(cached, lf, cfg.ConcurrentDownloads)
 			}
 		}
 	}
@@ -322,6 +328,11 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		return nil
 	}
 
+	cfg, err := config.New()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
 	client, err := newPyPIClient()
 	if err != nil {
 		return err
@@ -329,7 +340,7 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 
 	resCache := index.NewResolutionCache(defaultCacheDir())
 	cached := index.NewCachedClient(client, resCache)
-	prefetchPackages(cached, resolverDeps)
+	prefetchPackages(cached, resolverDeps, cfg.ConcurrentDownloads)
 
 	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras}
 
@@ -340,7 +351,7 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		if lockPath != "" {
 			if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
 				solverProvider = newLockedProvider(baseProvider, lf, opts.upgradePackages)
-				prefetchLockedVersions(cached, lf)
+				prefetchLockedVersions(cached, lf, cfg.ConcurrentDownloads)
 			}
 		}
 	}
@@ -404,9 +415,9 @@ func defaultCacheDir() string {
 	return filepath.Join(xdg.CacheHome, "pensa")
 }
 
-func prefetchPackages(client *index.CachedClient, deps []resolve.Dependency) {
+func prefetchPackages(client *index.CachedClient, deps []resolve.Dependency, concurrency int) {
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 8) // limit concurrency
+	sem := make(chan struct{}, concurrency)
 
 	for _, dep := range deps {
 		wg.Add(1)
@@ -525,9 +536,9 @@ func groupedDepsToRequirements(deps []pyproject.GroupedDependency) []pep508.Depe
 	return reqs
 }
 
-func prefetchLockedVersions(client *index.CachedClient, lf *lockfile.LockFile) {
+func prefetchLockedVersions(client *index.CachedClient, lf *lockfile.LockFile, concurrency int) {
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, concurrency)
 
 	for _, pkg := range lf.Packages {
 		ver, err := version.Parse(pkg.Version)
