@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/juanbzz/pensa/internal/python"
+	"github.com/juanbzz/pensa/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +15,7 @@ func newRunCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:                "run [command] [args...]",
 		Short:              "Run a command inside the project's virtualenv",
-		Long:               "Executes the given command with the virtualenv's Python and PATH.",
+		Long:               "Syncs the virtualenv, then executes the given command with the venv's Python and PATH.\nUse --no-sync to skip the sync step.",
 		Args:               cobra.MinimumNArgs(1),
 		DisableFlagParsing: true,
 		RunE:               runRun,
@@ -22,19 +23,38 @@ func newRunCmd() *cobra.Command {
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
+	// Parse --no-sync manually (DisableFlagParsing prevents Cobra from doing it).
+	noSync, args := extractFlag(args, "--no-sync")
+
+	if len(args) == 0 {
+		return fmt.Errorf("no command specified")
+	}
+
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	venvPath := filepath.Join(dir, ".venv")
-	if !python.VenvExists(venvPath) {
-		return fmt.Errorf("no virtualenv found at %s (run 'pensa install' first)", venvPath)
+	// Determine venv path (workspace root or project dir).
+	venvDir := dir
+	if ws, _ := workspace.Discover(dir); ws != nil {
+		venvDir = ws.Root
+	}
+	venvPath := filepath.Join(venvDir, ".venv")
+
+	// Auto-sync: ensure venv is up to date.
+	if !noSync {
+		// Output to stderr so it doesn't pollute command stdout.
+		if err := installFromLock(os.Stderr, true, nil); err != nil {
+			return fmt.Errorf("sync: %w", err)
+		}
+	} else if !python.VenvExists(venvPath) {
+		return fmt.Errorf("no virtualenv found at %s (run 'pensa install' or remove --no-sync)", venvPath)
 	}
 
+	// Exec the command in the venv.
 	binDir := filepath.Join(venvPath, "bin")
 
-	// Build the command.
 	command := args[0]
 	commandArgs := args[1:]
 
@@ -67,4 +87,18 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// extractFlag removes a flag from args and returns whether it was present.
+// Stops scanning at "--" separator.
+func extractFlag(args []string, flag string) (bool, []string) {
+	for i, a := range args {
+		if a == flag {
+			return true, append(args[:i], args[i+1:]...)
+		}
+		if a == "--" {
+			break
+		}
+	}
+	return false, args
 }
