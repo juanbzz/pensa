@@ -124,10 +124,14 @@ func parseAddArg(s string) (name, constraint string, extras []string, err error)
 		return "", "", nil, fmt.Errorf("empty package name")
 	}
 
-	// Split on @ for constraint.
+	// Split on @ for Poetry-style constraint (e.g. sqlalchemy@^2.0).
 	if i := strings.Index(s, "@"); i >= 0 {
 		name = s[:i]
 		constraint = s[i+1:]
+	} else if i := findPEP508Operator(s); i >= 0 {
+		// Split on PEP 508 operator (e.g. sqlalchemy>=2.0).
+		name = s[:i]
+		constraint = s[i:]
 	} else {
 		name = s
 	}
@@ -149,6 +153,22 @@ func parseAddArg(s string) (name, constraint string, extras []string, err error)
 	}
 
 	return name, constraint, extras, nil
+}
+
+// findPEP508Operator returns the index of the first PEP 508 version operator
+// in s, or -1 if none found. Checks two-char operators before one-char.
+func findPEP508Operator(s string) int {
+	for _, op := range []string{">=", "<=", "!=", "~=", "=="} {
+		if i := strings.Index(s, op); i > 0 {
+			return i
+		}
+	}
+	for _, op := range []string{">", "<"} {
+		if i := strings.Index(s, op); i > 0 {
+			return i
+		}
+	}
+	return -1
 }
 
 // getLatestVersion queries PyPI for the latest stable version of a package.

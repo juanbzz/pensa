@@ -3,6 +3,8 @@ package cli
 import (
 	"testing"
 
+	"github.com/matryer/is"
+
 	"github.com/juanbzz/pensa/internal/pyproject"
 )
 
@@ -152,4 +154,71 @@ func TestAddToProject_NoSection(t *testing.T) {
 	if len(proj.Project.Dependencies) != 1 {
 		t.Fatalf("deps count = %d, want 1", len(proj.Project.Dependencies))
 	}
+}
+
+func TestParseAddArg_PEP508_GreaterEqual(t *testing.T) {
+	assert := is.New(t)
+	name, constraint, _, err := parseAddArg("sqlalchemy>=2.0")
+	assert.NoErr(err)
+	assert.Equal(name, "sqlalchemy")
+	assert.Equal(constraint, ">=2.0")
+}
+
+func TestParseAddArg_PEP508_Exact(t *testing.T) {
+	assert := is.New(t)
+	name, constraint, _, err := parseAddArg("requests==2.31.0")
+	assert.NoErr(err)
+	assert.Equal(name, "requests")
+	assert.Equal(constraint, "==2.31.0")
+}
+
+func TestParseAddArg_PEP508_Compatible(t *testing.T) {
+	assert := is.New(t)
+	name, constraint, _, err := parseAddArg("flask~=2.0")
+	assert.NoErr(err)
+	assert.Equal(name, "flask")
+	assert.Equal(constraint, "~=2.0")
+}
+
+func TestParseAddArg_PEP508_Range(t *testing.T) {
+	assert := is.New(t)
+	name, constraint, _, err := parseAddArg("numpy>=1.21,<2.0")
+	assert.NoErr(err)
+	assert.Equal(name, "numpy")
+	assert.Equal(constraint, ">=1.21,<2.0")
+}
+
+func TestParseAddArg_PEP508_WithExtras(t *testing.T) {
+	assert := is.New(t)
+	name, constraint, extras, err := parseAddArg("requests[security]>=2.28")
+	assert.NoErr(err)
+	assert.Equal(name, "requests")
+	assert.Equal(constraint, ">=2.28")
+	assert.Equal(len(extras), 1)
+	assert.Equal(extras[0], "security")
+}
+
+func TestParseAddArg_PEP508_NotEqual(t *testing.T) {
+	assert := is.New(t)
+	name, constraint, _, err := parseAddArg("setuptools!=50.0")
+	assert.NoErr(err)
+	assert.Equal(name, "setuptools")
+	assert.Equal(constraint, "!=50.0")
+}
+
+func TestParseAddArg_PEP508_LessThan(t *testing.T) {
+	assert := is.New(t)
+	name, constraint, _, err := parseAddArg("protobuf<4.0")
+	assert.NoErr(err)
+	assert.Equal(name, "protobuf")
+	assert.Equal(constraint, "<4.0")
+}
+
+func TestParseAddArg_AtStylePreferred(t *testing.T) {
+	assert := is.New(t)
+	// @ style should still work and take precedence.
+	name, constraint, _, err := parseAddArg("requests@^2.28")
+	assert.NoErr(err)
+	assert.Equal(name, "requests")
+	assert.Equal(constraint, "^2.28")
 }
