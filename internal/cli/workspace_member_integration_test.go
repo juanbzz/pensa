@@ -311,3 +311,218 @@ func TestWorkspaceMember_UVFormat_RootWithoutFlag_Errors(t *testing.T) {
 	assert.True(strings.Contains(err.Error(), "mymonorepo-backend"))
 	assert.True(strings.Contains(err.Error(), "mymonorepo-pipeline"))
 }
+
+// setupPensaWorkspace creates a workspace using [tool.pensa.workspace] +
+// [tool.pensa.sources] — pensa's native format.
+func setupPensaWorkspace(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "pensa-mono"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.pensa.workspace]
+members = ["services/api", "services/worker"]
+
+[tool.pensa.sources]
+pensa-mono-api = { workspace = true }
+pensa-mono-worker = { workspace = true }
+`), 0644)
+
+	apiDir := filepath.Join(dir, "services", "api")
+	os.MkdirAll(apiDir, 0755)
+	os.WriteFile(filepath.Join(apiDir, "pyproject.toml"), []byte(`
+[project]
+name = "pensa-mono-api"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["six>=1.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(apiDir, "pensa_mono_api"), 0755)
+	os.WriteFile(filepath.Join(apiDir, "pensa_mono_api", "__init__.py"), []byte(""), 0644)
+
+	workerDir := filepath.Join(dir, "services", "worker")
+	os.MkdirAll(workerDir, 0755)
+	os.WriteFile(filepath.Join(workerDir, "pyproject.toml"), []byte(`
+[project]
+name = "pensa-mono-worker"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["certifi>=2023.0.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(workerDir, "pensa_mono_worker"), 0755)
+	os.WriteFile(filepath.Join(workerDir, "pensa_mono_worker", "__init__.py"), []byte(""), 0644)
+
+	return dir
+}
+
+func TestWorkspaceMember_PensaFormat_Lock(t *testing.T) {
+	assert := is.New(t)
+	dir := setupPensaWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"lock"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	out := buf.String()
+	assert.True(strings.Contains(out, "workspace"))
+	assert.True(strings.Contains(out, "2 members"))
+
+	// Lock at workspace root.
+	lockData, _ := os.ReadFile(filepath.Join(dir, "pensa.lock"))
+	lockContent := string(lockData)
+	assert.True(strings.Contains(lockContent, "six"))
+	assert.True(strings.Contains(lockContent, "certifi"))
+
+	// Workspace sources skipped.
+	assert.True(!strings.Contains(lockContent, "pensa-mono-api"))
+	assert.True(!strings.Contains(lockContent, "pensa-mono-worker"))
+}
+
+func TestWorkspaceMember_PensaFormat_AddWithPackageFlag(t *testing.T) {
+	assert := is.New(t)
+	dir := setupPensaWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna", "--package", "pensa-mono-api"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	// Dep in api's pyproject.
+	apiData, _ := os.ReadFile(filepath.Join(dir, "services", "api", "pyproject.toml"))
+	assert.True(strings.Contains(string(apiData), "idna"))
+
+	// NOT in worker's pyproject.
+	workerData, _ := os.ReadFile(filepath.Join(dir, "services", "worker", "pyproject.toml"))
+	assert.True(!strings.Contains(string(workerData), "idna"))
+
+	// Lock has all deps including new one.
+	lockData, _ := os.ReadFile(filepath.Join(dir, "pensa.lock"))
+	lockContent := string(lockData)
+	assert.True(strings.Contains(lockContent, "idna"))
+	assert.True(strings.Contains(lockContent, "six"))
+	assert.True(strings.Contains(lockContent, "certifi"))
+}
+
+func TestWorkspaceMember_PensaFormat_AddFromMemberDir(t *testing.T) {
+	assert := is.New(t)
+	dir := setupPensaWorkspace(t)
+	chdir(t, filepath.Join(dir, "services", "worker"))
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	// Dep in worker's pyproject (cwd-based).
+	workerData, _ := os.ReadFile(filepath.Join(dir, "services", "worker", "pyproject.toml"))
+	assert.True(strings.Contains(string(workerData), "idna"))
+
+	// NOT in api's.
+	apiData, _ := os.ReadFile(filepath.Join(dir, "services", "api", "pyproject.toml"))
+	assert.True(!strings.Contains(string(apiData), "idna"))
+}
+
+func TestWorkspaceMember_PensaFormat_SourcesSkipped(t *testing.T) {
+	assert := is.New(t)
+	dir := setupPensaWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"lock"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	// Read every package name in the lock file.
+	lockData, _ := os.ReadFile(filepath.Join(dir, "pensa.lock"))
+	lockContent := string(lockData)
+
+	// Workspace member names must NOT appear as resolved packages.
+	for _, name := range []string{"pensa-mono-api", "pensa-mono-worker"} {
+		needle := "name = \"" + name + "\""
+		assert.True(!strings.Contains(lockContent, needle))
+	}
+
+	// But real PyPI packages must be there.
+	assert.True(strings.Contains(lockContent, "name = \"six\""))
+	assert.True(strings.Contains(lockContent, "name = \"certifi\""))
+}
+
+func TestWorkspaceMember_PensaFormat_PensaSourcesTakePriority(t *testing.T) {
+	assert := is.New(t)
+	dir := t.TempDir()
+
+	// Both [tool.pensa.sources] and [tool.uv.sources] defined.
+	// Pensa sources list "priority-api" as workspace.
+	// UV sources list "priority-api" as NOT workspace (missing).
+	// Pensa should take priority → skip "priority-api" from PyPI.
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "priority-test"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.pensa.workspace]
+members = ["lib"]
+
+[tool.pensa.sources]
+priority-lib = { workspace = true }
+
+[tool.uv.sources]
+`), 0644)
+
+	libDir := filepath.Join(dir, "lib")
+	os.MkdirAll(libDir, 0755)
+	os.WriteFile(filepath.Join(libDir, "pyproject.toml"), []byte(`
+[project]
+name = "priority-lib"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["six>=1.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(libDir, "priority_lib"), 0755)
+	os.WriteFile(filepath.Join(libDir, "priority_lib", "__init__.py"), []byte(""), 0644)
+
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"lock"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	lockData, _ := os.ReadFile(filepath.Join(dir, "pensa.lock"))
+	lockContent := string(lockData)
+
+	// priority-lib should be skipped (pensa sources say workspace=true).
+	assert.True(!strings.Contains(lockContent, "priority-lib"))
+	// six should be resolved.
+	assert.True(strings.Contains(lockContent, "six"))
+}
