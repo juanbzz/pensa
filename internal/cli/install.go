@@ -199,11 +199,17 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 		if err := ins.InstallFromCache(res.pkg, res.wheelPath); err != nil {
 			return fmt.Errorf("install %s: %w", res.pkg.Name, err)
 		}
-		out.DiffAdd(res.pkg.Name, res.pkg.Version)
 	}
 
 	elapsed := time.Since(start)
 	out.Installed(len(results), elapsed)
+
+	// Per-package diff only in verbose mode.
+	if verbose {
+		for _, res := range results {
+			out.DiffAdd(res.pkg.Name, res.pkg.Version)
+		}
+	}
 
 	// Install the project itself in editable mode.
 	if installRoot {

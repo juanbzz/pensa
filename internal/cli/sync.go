@@ -131,7 +131,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 			if err := installer.UninstallPackage(siteDir, pkg.name, pkg.version); err != nil {
 				return fmt.Errorf("uninstall %s: %w", pkg.name, err)
 			}
-			out.DiffRemove(pkg.name, pkg.version)
 		}
 	}
 
@@ -184,7 +183,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 			if err := ins.InstallFromCache(res.pkg, res.wheelPath); err != nil {
 				return fmt.Errorf("install %s: %w", res.pkg.Name, err)
 			}
-			out.DiffAdd(res.pkg.Name, res.pkg.Version)
 		}
 	}
 
@@ -194,11 +192,22 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	elapsed := time.Since(start)
-	syncMsg := fmt.Sprintf("Synced %d installed", len(toInstall))
-	if len(toRemove) > 0 {
-		syncMsg += fmt.Sprintf(", %d removed", len(toRemove))
+	if len(toInstall) > 0 {
+		out.Installed(len(toInstall), elapsed)
 	}
-	out.Infof("%s in %s", green(syncMsg), formatDuration(elapsed))
+	if len(toRemove) > 0 {
+		out.Uninstalled(len(toRemove), elapsed)
+	}
+
+	// Per-package diff only in verbose mode.
+	if verbose {
+		for _, pkg := range toRemove {
+			out.DiffRemove(pkg.name, pkg.version)
+		}
+		for _, pkg := range toInstall {
+			out.DiffAdd(pkg.Name, pkg.Version)
+		}
+	}
 
 	return nil
 }

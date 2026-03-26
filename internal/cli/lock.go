@@ -176,8 +176,9 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Resolved"), len(result.Decisions), elapsed.Seconds())
-	fmt.Fprintf(w, "%s pensa.lock\n", green("Wrote"))
+	resolveUI := newUI(w, false, false)
+	resolveUI.Resolved(len(result.Decisions), elapsed)
+	// Lock file write is implicit — no output needed.
 
 	return nil
 }
@@ -282,7 +283,8 @@ func isRequestedExtra(d pep508.Dependency, requestedExtras []string) bool {
 func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) error {
 	start := time.Now()
 
-	fmt.Fprintf(w, "%s workspace with %d members\n", blue("Locking"), len(ws.Members))
+	wsUI := newUI(w, false, false)
+	wsUI.Workspace(len(ws.Members))
 	for _, m := range ws.Members {
 		fmt.Fprintf(w, "  %s %s\n", dim("•"), m.Name)
 	}
@@ -403,8 +405,9 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Resolved"), len(result.Decisions), elapsed.Seconds())
-	fmt.Fprintf(w, "%s pensa.lock\n", green("Wrote"))
+	resolveUI := newUI(w, false, false)
+	resolveUI.Resolved(len(result.Decisions), elapsed)
+	// Lock file write is implicit — no output needed.
 
 	return nil
 }

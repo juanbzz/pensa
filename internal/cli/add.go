@@ -81,6 +81,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		lf, _ = lockfile.ReadLockFile(lockPath)
 	}
 
+	type addedPkg struct {
+		name   string
+		extras []string
+	}
+	var addedNames []addedPkg
+
 	for _, arg := range args {
 		name, constraintStr, extras, err := parseAddArg(arg)
 		if err != nil {
@@ -98,7 +104,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				}
 				constraintStr = fmt.Sprintf("^%s", latest)
 			}
-			out.Infof("Using version %s for %s", bold(constraintStr), bold(name))
+			// Version discovery is silent; resolved version shown after lock.
 		}
 
 		if group != "" {
@@ -107,11 +113,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			addToProjectWithExtras(proj, name, constraintStr, extras)
 		}
 
-		displayName := name
-		if len(extras) > 0 {
-			displayName = name + "[" + strings.Join(extras, ",") + "]"
-		}
-		out.Added(displayName, constraintStr)
+		addedNames = append(addedNames, addedPkg{name: name, extras: extras})
 	}
 
 	if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {
@@ -120,11 +122,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Re-lock: entire workspace or single project.
 	if ws != nil {
-		// Re-read member's project to pick up changes.
 		if member != nil {
 			member.Project, _ = pyproject.ReadPyProject(pyprojectPath)
 		}
-		if err := runLockWorkspace(cmd.OutOrStdout(), ws, lockOptions{}); err != nil {
+		if err := runLockWorkspace(os.Stderr, ws, lockOptions{}); err != nil {
 			return err
 		}
 	} else {
@@ -132,12 +133,37 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("re-read pyproject.toml: %w", err)
 		}
-		if err := resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath, lockOptions{}); err != nil {
+		if err := resolveAndLock(os.Stderr, proj, pyprojectPath, lockOptions{}); err != nil {
 			return err
 		}
 	}
 
-	return installFromLock(cmd.OutOrStdout(), true, nil)
+	if err := installFromLock(os.Stderr, true, nil); err != nil {
+		return err
+	}
+
+	// Show what was added (resolved versions from lock file).
+	lockDir = dir
+	if ws != nil {
+		lockDir = ws.Root
+	}
+	if lockPath, _ := lockfile.DetectLockFile(lockDir); lockPath != "" {
+		if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
+			locked := make(map[string]string, len(lf.Packages))
+			for _, p := range lf.Packages {
+				locked[normalizeName(p.Name)] = p.Version
+			}
+			for _, pkg := range addedNames {
+				displayName := pkg.name
+				if len(pkg.extras) > 0 {
+					displayName += "[" + strings.Join(pkg.extras, ",") + "]"
+				}
+				out.DiffAdd(displayName, locked[normalizeName(pkg.name)])
+			}
+		}
+	}
+
+	return nil
 }
 
 // parseAddArg parses "name", "name@constraint", or "name[extras]@constraint".

@@ -19,75 +19,54 @@ func newUI(w io.Writer, verbose, quiet bool) *ui {
 }
 
 // --- Phase summaries (shown unless quiet) ---
+// Minimal color: bold on counts only, plain text otherwise.
 
 func (u *ui) Resolved(count int, elapsed time.Duration) {
 	if u.quiet {
 		return
 	}
-	fmt.Fprintf(u.w, "%s %s packages in %s\n",
-		green("Resolved"), bold(fmt.Sprintf("%d", count)), formatDuration(elapsed))
+	fmt.Fprintf(u.w, "Resolved %s in %s\n",
+		bold(pluralPkgs(count)), formatDuration(elapsed))
 }
 
 func (u *ui) Installed(count int, elapsed time.Duration) {
 	if u.quiet {
 		return
 	}
-	fmt.Fprintf(u.w, "%s %s packages in %s\n",
-		green("Installed"), bold(fmt.Sprintf("%d", count)), formatDuration(elapsed))
+	fmt.Fprintf(u.w, "Installed %s in %s\n",
+		bold(pluralPkgs(count)), formatDuration(elapsed))
 }
 
-func (u *ui) Wrote(filename string) {
+func (u *ui) Uninstalled(count int, elapsed time.Duration) {
 	if u.quiet {
 		return
 	}
-	fmt.Fprintf(u.w, "%s %s\n", green("Wrote"), filename)
+	fmt.Fprintf(u.w, "Uninstalled %s in %s\n",
+		bold(pluralPkgs(count)), formatDuration(elapsed))
 }
 
 func (u *ui) UpToDate(msg string) {
 	if u.quiet {
 		return
 	}
-	fmt.Fprintf(u.w, "%s\n", green(msg))
+	fmt.Fprintf(u.w, "%s\n", msg)
 }
 
-// --- Action verbs (add/remove/update) ---
-
-func (u *ui) Added(name, version string) {
-	if u.quiet {
-		return
-	}
-	fmt.Fprintf(u.w, "%s %s %s\n", green("Added"), bold(name), dim("v"+version))
-}
-
-func (u *ui) Removed(name, version string) {
-	if u.quiet {
-		return
-	}
-	fmt.Fprintf(u.w, "%s %s %s\n", red("Removed"), bold(name), dim("v"+version))
-}
-
-func (u *ui) Updated(name, from, to string) {
-	if u.quiet {
-		return
-	}
-	fmt.Fprintf(u.w, "%s %s %s -> %s\n",
-		green("Updated"), bold(name), dim("v"+from), dim("v"+to))
-}
-
-// --- Verbose-only: per-package diff lines ---
+// --- Diff lines (shown unless quiet) ---
+// Color only on +/- prefix. Package name bold, version plain.
 
 func (u *ui) DiffAdd(name, version string) {
-	if !u.verbose {
+	if u.quiet {
 		return
 	}
-	fmt.Fprintf(u.w, " %s %s %s\n", green("+"), bold(name), dim(version))
+	fmt.Fprintf(u.w, " %s %s==%s\n", green("+"), bold(name), version)
 }
 
 func (u *ui) DiffRemove(name, version string) {
-	if !u.verbose {
+	if u.quiet {
 		return
 	}
-	fmt.Fprintf(u.w, " %s %s %s\n", red("-"), bold(name), dim(version))
+	fmt.Fprintf(u.w, " %s %s==%s\n", red("-"), bold(name), version)
 }
 
 // --- Info messages ---
@@ -110,7 +89,7 @@ func (u *ui) Workspace(memberCount int) {
 	if u.quiet {
 		return
 	}
-	fmt.Fprintf(u.w, "%s workspace with %d members\n", blue("Locking"), memberCount)
+	fmt.Fprintf(u.w, "Locking workspace with %d members\n", memberCount)
 }
 
 func (u *ui) Member(name string) {
@@ -134,7 +113,7 @@ func (u *ui) Hint(msg string) {
 	fmt.Fprintf(u.w, "%s %s\n", cyan(bold("hint:")), msg)
 }
 
-// --- Timing ---
+// --- Helpers ---
 
 func formatDuration(d time.Duration) string {
 	switch {
@@ -145,4 +124,11 @@ func formatDuration(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dms", d.Milliseconds())
 	}
+}
+
+func pluralPkgs(n int) string {
+	if n == 1 {
+		return "1 package"
+	}
+	return fmt.Sprintf("%d packages", n)
 }

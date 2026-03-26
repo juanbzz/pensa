@@ -103,6 +103,15 @@ func uiFromCmd(cmd *cobra.Command) *ui {
 		}
 	}
 
+	// Propagate flags to env so inner functions (installFromLock, sync)
+	// that read config.New() also pick them up.
+	if verbose {
+		os.Setenv("PENSA_VERBOSE", "1")
+	}
+	if quiet {
+		os.Setenv("PENSA_QUIET", "1")
+	}
+
 	// Color control: --no-color > --color > NO_COLOR > PENSA_COLOR > auto.
 	if noColor {
 		color.NoColor = true

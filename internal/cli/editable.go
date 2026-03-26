@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/juanbzz/pensa/internal/build"
+	"github.com/juanbzz/pensa/internal/config"
 	"github.com/juanbzz/pensa/internal/installer"
 	"github.com/juanbzz/pensa/internal/pyproject"
 	"github.com/juanbzz/pensa/internal/python"
@@ -76,8 +77,11 @@ func installProject(w io.Writer, projectDir, venvPath string, py *python.PythonI
 		installer.InstallEntryPoints(distInfo, binDir, pythonPath)
 	}
 
-	out := newUI(w, false, false)
-	out.Infof("%s %s in editable mode", green("Installed"), bold(name))
+	cfg, _ := config.New()
+	if cfg != nil && cfg.Verbose {
+		out := newUI(w, true, false)
+		out.Infof("%s %s in editable mode", green("Installed"), bold(name))
+	}
 
 	return nil
 }

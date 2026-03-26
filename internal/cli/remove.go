@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
 	"github.com/juanbzz/pensa/internal/workspace"
 	"github.com/juanbzz/pensa/pkg/pep508"
@@ -57,6 +58,21 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Read lock file to get current versions for removed packages.
+	removeLockDir := dir
+	if ws != nil {
+		removeLockDir = ws.Root
+	}
+	lockedVersions := make(map[string]string)
+	if lockPath, _ := lockfile.DetectLockFile(removeLockDir); lockPath != "" {
+		if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
+			for _, p := range lf.Packages {
+				lockedVersions[normalizeName(p.Name)] = p.Version
+			}
+		}
+	}
+
+	var removedPkgs []string
 	for _, arg := range args {
 		name := pep508.NormalizeName(arg)
 		if group != "" {
@@ -68,7 +84,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 				return err
 			}
 		}
-		out.Removed(name, "")
+		removedPkgs = append(removedPkgs, name)
 	}
 
 	if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {
@@ -106,7 +122,16 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	return installFromLock(os.Stderr, true, nil)
+	if err := installFromLock(os.Stderr, true, nil); err != nil {
+		return err
+	}
+
+	// Show what was removed.
+	for _, name := range removedPkgs {
+		out.DiffRemove(name, lockedVersions[name])
+	}
+
+	return nil
 }
 
 // removeFromProject removes a dependency from the appropriate section of pyproject.toml.
