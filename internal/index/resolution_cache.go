@@ -114,8 +114,8 @@ func (rp *ResolutionPackage) ToPackageInfo() *PackageInfo {
 		filename := safeName + "-" + vs + "-py3-none-any.whl"
 		fi := FileInfo{Filename: filename}
 		if rp.PEP658 {
-			fi.CoreMetadata = true
-			if url, ok := rp.WheelURLs[vs]; ok {
+			if url, ok := rp.WheelURLs[vs]; ok && url != "" {
+				fi.CoreMetadata = true
 				fi.URL = url
 			}
 		}

@@ -1,11 +1,14 @@
 package index
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
+
+	json "github.com/goccy/go-json"
 
 	"github.com/juanbzz/pensa/pkg/pep508"
 	"github.com/juanbzz/pensa/pkg/version"
@@ -60,19 +63,79 @@ func NewPyPIClient(opts ...Option) *PyPIClient {
 }
 
 // GetPackageInfo fetches the Simple API listing for a package.
+// Uses HTTP conditional requests (ETag/304) to avoid re-downloading unchanged data.
 func (c *PyPIClient) GetPackageInfo(name string) (*PackageInfo, error) {
 	normalized := pep508.NormalizeName(name)
 	cacheKey := "simple/" + normalized + ".json"
 
-	// Check cache.
 	if c.cache != nil {
 		if data, err := c.cache.Get(cacheKey); err == nil && data != nil {
+			meta := c.cache.GetMeta(cacheKey)
+
+			// Fresh cache — skip network entirely.
+			if meta != nil && meta.Fresh() {
+				return c.parseSimpleJSON(normalized, data)
+			}
+
+			// Stale cache with ETag — try conditional request.
+			if meta != nil && meta.ETag != "" {
+				info, err := c.conditionalFetch(normalized, cacheKey, data, meta)
+				if err == nil {
+					return info, nil
+				}
+				// Fall through to full fetch on error.
+			}
+
+			// Stale cache without metadata — use cached data but refresh in background.
+			// For now, just use cached data to avoid blocking.
 			return c.parseSimpleJSON(normalized, data)
 		}
 	}
 
-	// Fetch from remote.
-	url := c.baseURL + normalized + "/"
+	return c.fullFetchPackageInfo(normalized, cacheKey)
+}
+
+// conditionalFetch sends an If-None-Match request. On 304, returns cached data.
+// On 200, updates cache and returns new data.
+func (c *PyPIClient) conditionalFetch(name, cacheKey string, cachedData []byte, meta *CacheMeta) (*PackageInfo, error) {
+	url := c.baseURL + name + "/"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.pypi.simple.v1+json")
+	req.Header.Set("If-None-Match", meta.ETag)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotModified {
+		// Data unchanged — update freshness timestamp and reuse cached data.
+		newMeta := parseCacheMeta(resp)
+		newMeta.ETag = meta.ETag // preserve ETag (304 may not echo it)
+		_ = c.cache.UpdateMeta(cacheKey, newMeta)
+		return c.parseSimpleJSON(name, cachedData)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("index: unexpected status %d for %s", resp.StatusCode, url)
+	}
+
+	// Full new response — cache it.
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("index: read response: %w", err)
+	}
+	_ = c.cache.PutWithMeta(cacheKey, data, parseCacheMeta(resp))
+	return c.parseSimpleJSON(name, data)
+}
+
+// fullFetchPackageInfo fetches the Simple API with no cache.
+func (c *PyPIClient) fullFetchPackageInfo(name, cacheKey string) (*PackageInfo, error) {
+	url := c.baseURL + name + "/"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("index: create request: %w", err)
@@ -97,12 +160,30 @@ func (c *PyPIClient) GetPackageInfo(name string) (*PackageInfo, error) {
 		return nil, fmt.Errorf("index: read response: %w", err)
 	}
 
-	// Cache the response.
 	if c.cache != nil {
-		_ = c.cache.Put(cacheKey, data)
+		_ = c.cache.PutWithMeta(cacheKey, data, parseCacheMeta(resp))
 	}
 
-	return c.parseSimpleJSON(normalized, data)
+	return c.parseSimpleJSON(name, data)
+}
+
+// parseCacheMeta extracts HTTP cache policy from response headers.
+func parseCacheMeta(resp *http.Response) CacheMeta {
+	meta := CacheMeta{
+		ETag: resp.Header.Get("ETag"),
+		Date: time.Now().Unix(),
+	}
+	if cc := resp.Header.Get("Cache-Control"); cc != "" {
+		for _, directive := range strings.Split(cc, ",") {
+			d := strings.TrimSpace(directive)
+			if strings.HasPrefix(d, "max-age=") {
+				if v, err := strconv.Atoi(d[8:]); err == nil {
+					meta.MaxAge = v
+				}
+			}
+		}
+	}
+	return meta
 }
 
 // simpleJSON matches the PEP 691 JSON response format.
