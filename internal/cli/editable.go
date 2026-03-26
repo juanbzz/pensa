@@ -47,7 +47,8 @@ func installProject(w io.Writer, projectDir, venvPath string, py *python.PythonI
 	})
 	if err != nil {
 		// Warn but don't fail — deps are installed, just no editable project.
-		fmt.Fprintf(w, "%s editable install failed: %s\n", yellow("Warning:"), err)
+		out := newUI(w, false, false)
+		out.Warning(fmt.Sprintf("editable install failed: %s", err))
 		return nil
 	}
 
@@ -75,7 +76,8 @@ func installProject(w io.Writer, projectDir, venvPath string, py *python.PythonI
 		installer.InstallEntryPoints(distInfo, binDir, pythonPath)
 	}
 
-	fmt.Fprintf(w, "%s %s in editable mode\n", green("Installing"), bold(name))
+	out := newUI(w, false, false)
+	out.Infof("%s %s in editable mode", green("Installed"), bold(name))
 
 	return nil
 }
