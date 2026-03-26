@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/juanbzz/pensa/internal/config"
 	"github.com/juanbzz/pensa/internal/installer"
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/python"
@@ -115,19 +116,22 @@ func runSync(cmd *cobra.Command, args []string) error {
 		toRemove = append(toRemove, removeEntry{name, ver})
 	}
 
+	cfg, _ := config.New()
+	verbose := cfg != nil && cfg.Verbose
+	out := newUI(w, verbose, cfg != nil && cfg.Quiet)
+
 	if len(toInstall) == 0 && len(toRemove) == 0 {
-		fmt.Fprintf(w, "%s\n", green("All packages up to date."))
+		out.UpToDate("All packages up to date.")
 		return nil
 	}
 
 	// Remove extras first.
 	if len(toRemove) > 0 {
-		fmt.Fprintf(w, "Removing %d packages...\n", len(toRemove))
 		for _, pkg := range toRemove {
-			fmt.Fprintf(w, "  %s %s %s\n", yellow("Removing"), bold(pkg.name), dim("("+pkg.version+")"))
 			if err := installer.UninstallPackage(siteDir, pkg.name, pkg.version); err != nil {
 				return fmt.Errorf("uninstall %s: %w", pkg.name, err)
 			}
+			out.DiffRemove(pkg.name, pkg.version)
 		}
 	}
 
@@ -143,7 +147,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		ins := installer.NewInstaller(client, venvPath, py, cacheDir)
 
-		// Phase 1: Download in parallel.
 		type downloadResult struct {
 			pkg       lockfile.LockedPackage
 			wheelPath string
@@ -177,13 +180,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		stop()
 
-		// Phase 2: Install from cache.
-		fmt.Fprintf(w, "Installing %d packages...\n", len(results))
 		for _, res := range results {
-			fmt.Fprintf(w, "  %s %s %s\n", green("Installing"), bold(res.pkg.Name), dim("("+res.pkg.Version+")"))
 			if err := ins.InstallFromCache(res.pkg, res.wheelPath); err != nil {
 				return fmt.Errorf("install %s: %w", res.pkg.Name, err)
 			}
+			out.DiffAdd(res.pkg.Name, res.pkg.Version)
 		}
 	}
 
@@ -193,7 +194,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(w, "%s in %.1fs\n", green("Synced"), elapsed.Seconds())
+	syncMsg := fmt.Sprintf("Synced %d installed", len(toInstall))
+	if len(toRemove) > 0 {
+		syncMsg += fmt.Sprintf(", %d removed", len(toRemove))
+	}
+	out.Infof("%s in %s", green(syncMsg), formatDuration(elapsed))
 
 	return nil
 }

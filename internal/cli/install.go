@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/juanbzz/pensa/internal/config"
 	"github.com/juanbzz/pensa/internal/installer"
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/python"
@@ -190,16 +191,19 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 	stop()
 
 	// Phase 2: Install sequentially from cache.
-	fmt.Fprintf(w, "Installing %d packages...\n", len(results))
+	cfg, _ := config.New()
+	verbose := cfg != nil && cfg.Verbose
+	out := newUI(w, verbose, cfg != nil && cfg.Quiet)
+
 	for _, res := range results {
-		fmt.Fprintf(w, "  %s %s %s\n", green("Installing"), bold(res.pkg.Name), dim("("+res.pkg.Version+")"))
 		if err := ins.InstallFromCache(res.pkg, res.wheelPath); err != nil {
 			return fmt.Errorf("install %s: %w", res.pkg.Name, err)
 		}
+		out.DiffAdd(res.pkg.Name, res.pkg.Version)
 	}
 
 	elapsed := time.Since(start)
-	fmt.Fprintf(w, "%s %d packages in %.1fs\n", green("Installed"), len(results), elapsed.Seconds())
+	out.Installed(len(results), elapsed)
 
 	// Install the project itself in editable mode.
 	if installRoot {
