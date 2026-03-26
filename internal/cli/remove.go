@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/juanbzz/pensa/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/workspace"
 	"github.com/juanbzz/pensa/pkg/pep508"
 	"github.com/spf13/cobra"
 )
@@ -22,6 +23,7 @@ func newRemoveCmd() *cobra.Command {
 		RunE: runRemove,
 	}
 	cmd.Flags().StringP("group", "G", "", "Dependency group (e.g., dev, test)")
+	cmd.Flags().String("package", "", "Target workspace member (by name)")
 	return cmd
 }
 
@@ -31,15 +33,29 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	pyprojectPath := filepath.Join(dir, "pyproject.toml")
-	proj, err := pyproject.ReadPyProject(pyprojectPath)
-	if err != nil {
-		return fmt.Errorf("read pyproject.toml: %w", err)
-	}
-
+	pkgFlag, _ := cmd.Flags().GetString("package")
+	group, _ := cmd.Flags().GetString("group")
 	w := cmd.OutOrStdout()
 
-	group, _ := cmd.Flags().GetString("group")
+	// Resolve workspace + target member.
+	ws, _ := workspace.Discover(dir)
+	member, err := resolveTargetMember(ws, pkgFlag, dir)
+	if err != nil {
+		return err
+	}
+
+	var pyprojectPath string
+	var proj *pyproject.PyProject
+	if member != nil {
+		pyprojectPath = filepath.Join(member.Path, "pyproject.toml")
+		proj = member.Project
+	} else {
+		pyprojectPath = filepath.Join(dir, "pyproject.toml")
+		proj, err = pyproject.ReadPyProject(pyprojectPath)
+		if err != nil {
+			return fmt.Errorf("read pyproject.toml: %w", err)
+		}
+	}
 
 	for _, arg := range args {
 		name := pep508.NormalizeName(arg)
@@ -59,32 +75,37 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("write pyproject.toml: %w", err)
 	}
 
-	// Re-read to pick up normalized changes.
-	proj, err = pyproject.ReadPyProject(pyprojectPath)
-	if err != nil {
-		return fmt.Errorf("re-read pyproject.toml: %w", err)
-	}
-
-	// Check if any deps remain (across all groups).
-	allDeps, err := proj.ResolveAllDependencies()
-	if err != nil {
-		return fmt.Errorf("resolve dependencies: %w", err)
-	}
-	deps := allDeps
-
-	if len(deps) == 0 {
-		// No deps left — remove any lock file that exists.
-		for _, name := range []string{"pensa.lock", "uv.lock", "poetry.lock"} {
-			os.Remove(filepath.Join(dir, name))
+	// Re-lock: entire workspace or single project.
+	if ws != nil {
+		if member != nil {
+			member.Project, _ = pyproject.ReadPyProject(pyprojectPath)
 		}
-		fmt.Fprintf(w, "No dependencies remaining.\n")
-		return nil
+		if err := runLockWorkspace(w, ws, lockOptions{}); err != nil {
+			return err
+		}
+	} else {
+		proj, err = pyproject.ReadPyProject(pyprojectPath)
+		if err != nil {
+			return fmt.Errorf("re-read pyproject.toml: %w", err)
+		}
+
+		allDeps, err := proj.ResolveAllDependencies()
+		if err != nil {
+			return fmt.Errorf("resolve dependencies: %w", err)
+		}
+		if len(allDeps) == 0 {
+			for _, name := range []string{"pensa.lock", "uv.lock", "poetry.lock"} {
+				os.Remove(filepath.Join(dir, name))
+			}
+			fmt.Fprintf(w, "No dependencies remaining.\n")
+			return nil
+		}
+
+		if err := resolveAndLock(w, proj, pyprojectPath, lockOptions{}); err != nil {
+			return err
+		}
 	}
 
-	// Re-lock and re-install.
-	if err := resolveAndLock(w, proj, pyprojectPath, lockOptions{}); err != nil {
-		return err
-	}
 	return installFromLock(w, true, nil)
 }
 

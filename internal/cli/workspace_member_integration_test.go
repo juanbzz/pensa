@@ -1,0 +1,313 @@
+//go:build integration
+
+package cli
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/matryer/is"
+)
+
+func TestWorkspaceMember_AddWithPackageFlag(t *testing.T) {
+	assert := is.New(t)
+	dir := setupWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna", "--package", "test-api"})
+
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	out := buf.String()
+	assert.True(strings.Contains(out, "Adding"))
+	assert.True(strings.Contains(out, "idna"))
+
+	// Dep should be in api's pyproject, not root's.
+	apiData, _ := os.ReadFile(filepath.Join(dir, "apps", "api", "pyproject.toml"))
+	assert.True(strings.Contains(string(apiData), "idna"))
+
+	rootData, _ := os.ReadFile(filepath.Join(dir, "pyproject.toml"))
+	assert.True(!strings.Contains(string(rootData), "idna"))
+
+	// Lock file should exist at workspace root.
+	_, err = os.Stat(filepath.Join(dir, "pensa.lock"))
+	assert.NoErr(err)
+
+	// Lock should contain the new dep.
+	lockData, _ := os.ReadFile(filepath.Join(dir, "pensa.lock"))
+	assert.True(strings.Contains(string(lockData), "idna"))
+}
+
+func TestWorkspaceMember_AddFromMemberDir(t *testing.T) {
+	assert := is.New(t)
+	dir := setupWorkspace(t)
+	chdir(t, filepath.Join(dir, "apps", "worker"))
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna"})
+
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	// Dep should be in worker's pyproject (cwd-based detection).
+	workerData, _ := os.ReadFile(filepath.Join(dir, "apps", "worker", "pyproject.toml"))
+	assert.True(strings.Contains(string(workerData), "idna"))
+
+	// NOT in api's pyproject.
+	apiData, _ := os.ReadFile(filepath.Join(dir, "apps", "api", "pyproject.toml"))
+	assert.True(!strings.Contains(string(apiData), "idna"))
+}
+
+func TestWorkspaceMember_AddAtRootWithoutFlag_Errors(t *testing.T) {
+	assert := is.New(t)
+	dir := setupWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"add", "idna"})
+
+	err := cmd.Execute()
+	assert.True(err != nil)
+	assert.True(strings.Contains(err.Error(), "use --package"))
+}
+
+func TestWorkspaceMember_AddUnknownMember_Errors(t *testing.T) {
+	assert := is.New(t)
+	dir := setupWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna", "--package", "nonexistent"})
+
+	err := cmd.Execute()
+	assert.True(err != nil)
+	assert.True(strings.Contains(err.Error(), "not found"))
+	assert.True(strings.Contains(err.Error(), "test-api"))
+	assert.True(strings.Contains(err.Error(), "test-worker"))
+}
+
+func TestWorkspaceMember_RemoveWithPackageFlag(t *testing.T) {
+	assert := is.New(t)
+	dir := setupWorkspace(t)
+	chdir(t, dir)
+
+	// First add a dep.
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna", "--package", "test-api"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	// Verify it's there.
+	apiData, _ := os.ReadFile(filepath.Join(dir, "apps", "api", "pyproject.toml"))
+	assert.True(strings.Contains(string(apiData), "idna"))
+
+	// Now remove it.
+	cmd = newRootCmd()
+	buf = new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"remove", "idna", "--package", "test-api"})
+	err = cmd.Execute()
+	assert.NoErr(err)
+
+	out := buf.String()
+	assert.True(strings.Contains(out, "Removing"))
+	assert.True(strings.Contains(out, "idna"))
+
+	// Should be gone from api's pyproject.
+	apiData, _ = os.ReadFile(filepath.Join(dir, "apps", "api", "pyproject.toml"))
+	assert.True(!strings.Contains(string(apiData), "idna"))
+}
+
+func TestWorkspaceMember_RemoveFromMemberDir(t *testing.T) {
+	assert := is.New(t)
+	dir := setupWorkspace(t)
+
+	// Add from root with --package.
+	chdir(t, dir)
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna", "--package", "test-worker"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	// Remove from member dir (cwd-based).
+	chdir(t, filepath.Join(dir, "apps", "worker"))
+	cmd = newRootCmd()
+	buf = new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"remove", "idna"})
+	err = cmd.Execute()
+	assert.NoErr(err)
+
+	workerData, _ := os.ReadFile(filepath.Join(dir, "apps", "worker", "pyproject.toml"))
+	assert.True(!strings.Contains(string(workerData), "idna"))
+}
+
+// setupUVWorkspace creates a workspace using [tool.uv.workspace] format,
+// matching the real-world pgm monorepo pattern.
+func setupUVWorkspace(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "mymonorepo"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.uv.workspace]
+members = ["apps/backend", "apps/pipeline"]
+
+[tool.uv.sources]
+mymonorepo-backend = { workspace = true }
+mymonorepo-pipeline = { workspace = true }
+`), 0644)
+
+	backendDir := filepath.Join(dir, "apps", "backend")
+	os.MkdirAll(backendDir, 0755)
+	os.WriteFile(filepath.Join(backendDir, "pyproject.toml"), []byte(`
+[project]
+name = "mymonorepo-backend"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["six>=1.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(backendDir, "mymonorepo_backend"), 0755)
+	os.WriteFile(filepath.Join(backendDir, "mymonorepo_backend", "__init__.py"), []byte(""), 0644)
+
+	pipelineDir := filepath.Join(dir, "apps", "pipeline")
+	os.MkdirAll(pipelineDir, 0755)
+	os.WriteFile(filepath.Join(pipelineDir, "pyproject.toml"), []byte(`
+[project]
+name = "mymonorepo-pipeline"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["certifi>=2023.0.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+`), 0644)
+	os.MkdirAll(filepath.Join(pipelineDir, "mymonorepo_pipeline"), 0755)
+	os.WriteFile(filepath.Join(pipelineDir, "mymonorepo_pipeline", "__init__.py"), []byte(""), 0644)
+
+	return dir
+}
+
+func TestWorkspaceMember_UVFormat_AddWithPackageFlag(t *testing.T) {
+	assert := is.New(t)
+	dir := setupUVWorkspace(t)
+	chdir(t, dir)
+
+	// Add to backend member using --package.
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna", "--package", "mymonorepo-backend"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	// Dep should be in backend's pyproject.
+	backendData, _ := os.ReadFile(filepath.Join(dir, "apps", "backend", "pyproject.toml"))
+	assert.True(strings.Contains(string(backendData), "idna"))
+
+	// NOT in pipeline's pyproject.
+	pipelineData, _ := os.ReadFile(filepath.Join(dir, "apps", "pipeline", "pyproject.toml"))
+	assert.True(!strings.Contains(string(pipelineData), "idna"))
+
+	// Lock file at workspace root should have all deps.
+	lockData, _ := os.ReadFile(filepath.Join(dir, "pensa.lock"))
+	lockContent := string(lockData)
+	assert.True(strings.Contains(lockContent, "idna"))    // newly added
+	assert.True(strings.Contains(lockContent, "six"))      // backend's existing dep
+	assert.True(strings.Contains(lockContent, "certifi"))  // pipeline's dep
+
+	// Workspace sources should be skipped (not in lock as PyPI packages).
+	assert.True(!strings.Contains(lockContent, "mymonorepo-backend"))
+	assert.True(!strings.Contains(lockContent, "mymonorepo-pipeline"))
+}
+
+func TestWorkspaceMember_UVFormat_AddFromMemberDir(t *testing.T) {
+	assert := is.New(t)
+	dir := setupUVWorkspace(t)
+
+	// cd into pipeline member and add without --package.
+	chdir(t, filepath.Join(dir, "apps", "pipeline"))
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	// Dep should be in pipeline's pyproject (cwd-based).
+	pipelineData, _ := os.ReadFile(filepath.Join(dir, "apps", "pipeline", "pyproject.toml"))
+	assert.True(strings.Contains(string(pipelineData), "idna"))
+
+	// NOT in backend's pyproject.
+	backendData, _ := os.ReadFile(filepath.Join(dir, "apps", "backend", "pyproject.toml"))
+	assert.True(!strings.Contains(string(backendData), "idna"))
+}
+
+func TestWorkspaceMember_UVFormat_RemoveWithPackageFlag(t *testing.T) {
+	assert := is.New(t)
+	dir := setupUVWorkspace(t)
+	chdir(t, dir)
+
+	// Add then remove.
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna", "--package", "mymonorepo-pipeline"})
+	err := cmd.Execute()
+	assert.NoErr(err)
+
+	cmd = newRootCmd()
+	buf = new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"remove", "idna", "--package", "mymonorepo-pipeline"})
+	err = cmd.Execute()
+	assert.NoErr(err)
+
+	pipelineData, _ := os.ReadFile(filepath.Join(dir, "apps", "pipeline", "pyproject.toml"))
+	assert.True(!strings.Contains(string(pipelineData), "idna"))
+}
+
+func TestWorkspaceMember_UVFormat_RootWithoutFlag_Errors(t *testing.T) {
+	assert := is.New(t)
+	dir := setupUVWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"add", "idna"})
+
+	err := cmd.Execute()
+	assert.True(err != nil)
+	assert.True(strings.Contains(err.Error(), "use --package"))
+	assert.True(strings.Contains(err.Error(), "mymonorepo-backend"))
+	assert.True(strings.Contains(err.Error(), "mymonorepo-pipeline"))
+}

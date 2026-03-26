@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/juanbzz/pensa/internal/pyproject"
 )
@@ -94,6 +95,25 @@ func (ws *Workspace) FindMember(name string) *Member {
 		}
 	}
 	return nil
+}
+
+// MemberForDir returns the member whose path matches dir, or nil.
+func (ws *Workspace) MemberForDir(dir string) *Member {
+	for i, m := range ws.Members {
+		if m.Path == dir {
+			return &ws.Members[i]
+		}
+	}
+	return nil
+}
+
+// MemberNames returns a comma-separated list of member names.
+func (ws *Workspace) MemberNames() string {
+	names := make([]string, len(ws.Members))
+	for i, m := range ws.Members {
+		names[i] = m.Name
+	}
+	return strings.Join(names, ", ")
 }
 
 // LockFilePath returns the path to the workspace lock file.

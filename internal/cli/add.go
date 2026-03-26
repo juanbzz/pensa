@@ -10,6 +10,7 @@ import (
 	"github.com/juanbzz/pensa/internal/index"
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/workspace"
 	"github.com/juanbzz/pensa/pkg/pep508"
 	"github.com/juanbzz/pensa/pkg/version"
 	"github.com/spf13/cobra"
@@ -30,6 +31,7 @@ Specify packages as:
 		RunE: runAdd,
 	}
 	cmd.Flags().StringP("group", "G", "", "Dependency group (e.g., dev, test)")
+	cmd.Flags().String("package", "", "Target workspace member (by name)")
 	return cmd
 }
 
@@ -39,10 +41,28 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	pyprojectPath := filepath.Join(dir, "pyproject.toml")
-	proj, err := pyproject.ReadPyProject(pyprojectPath)
+	pkgFlag, _ := cmd.Flags().GetString("package")
+	group, _ := cmd.Flags().GetString("group")
+
+	// Resolve workspace + target member.
+	ws, _ := workspace.Discover(dir)
+	member, err := resolveTargetMember(ws, pkgFlag, dir)
 	if err != nil {
-		return fmt.Errorf("read pyproject.toml: %w", err)
+		return err
+	}
+
+	// Determine which pyproject to modify.
+	var pyprojectPath string
+	var proj *pyproject.PyProject
+	if member != nil {
+		pyprojectPath = filepath.Join(member.Path, "pyproject.toml")
+		proj = member.Project
+	} else {
+		pyprojectPath = filepath.Join(dir, "pyproject.toml")
+		proj, err = pyproject.ReadPyProject(pyprojectPath)
+		if err != nil {
+			return fmt.Errorf("read pyproject.toml: %w", err)
+		}
 	}
 
 	client, err := newPyPIClient()
@@ -50,11 +70,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	group, _ := cmd.Flags().GetString("group")
-
 	// Read existing lock file to check for transitive dependency versions.
+	lockDir := dir
+	if ws != nil {
+		lockDir = ws.Root
+	}
 	var lf *lockfile.LockFile
-	if lockPath, _ := lockfile.DetectLockFile(dir); lockPath != "" {
+	if lockPath, _ := lockfile.DetectLockFile(lockDir); lockPath != "" {
 		lf, _ = lockfile.ReadLockFile(lockPath)
 	}
 
@@ -65,8 +87,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 		name = pep508.NormalizeName(name)
 
-		// If no constraint specified, check lock file for existing version,
-		// then fall back to latest from PyPI.
 		if constraintStr == "" {
 			if v := lockedVersion(lf, name); v != "" {
 				constraintStr = fmt.Sprintf("^%s", v)
@@ -97,23 +117,29 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "%s %s %s%s\n", green("Adding"), bold(displayName), dim("("+constraintStr+")"), groupLabel)
 	}
 
-	// Write updated pyproject.toml.
 	if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {
 		return fmt.Errorf("write pyproject.toml: %w", err)
 	}
 
-	// Re-read to pick up the changes (WritePyProject may normalize).
-	proj, err = pyproject.ReadPyProject(pyprojectPath)
-	if err != nil {
-		return fmt.Errorf("re-read pyproject.toml: %w", err)
+	// Re-lock: entire workspace or single project.
+	if ws != nil {
+		// Re-read member's project to pick up changes.
+		if member != nil {
+			member.Project, _ = pyproject.ReadPyProject(pyprojectPath)
+		}
+		if err := runLockWorkspace(cmd.OutOrStdout(), ws, lockOptions{}); err != nil {
+			return err
+		}
+	} else {
+		proj, err = pyproject.ReadPyProject(pyprojectPath)
+		if err != nil {
+			return fmt.Errorf("re-read pyproject.toml: %w", err)
+		}
+		if err := resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath, lockOptions{}); err != nil {
+			return err
+		}
 	}
 
-	// Resolve and lock.
-	if err := resolveAndLock(cmd.OutOrStdout(), proj, pyprojectPath, lockOptions{}); err != nil {
-		return err
-	}
-
-	// Install packages.
 	return installFromLock(cmd.OutOrStdout(), true, nil)
 }
 
