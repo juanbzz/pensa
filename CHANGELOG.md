@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-27
+
+### Added
+
+- Workspace per-member commands, e.g., `pensa add flask --package backend` 
+- Workspace inter-package dependencies. Handles A→B→C chains via BFS.
+- Workspace sources, e.g., `[tool.pensa.sources]` with `workspace = true`. Tested with `[tool.uv.sources]` compat. Pensa sources take priority.
+- Auto-sync on `pensa run`. Output to stderr. `--no-sync` to skip.
+- PEP 508 specifiers in `pensa add`.
+- Global flags `-v`/`--verbose`, `-q`/`--quiet`, `--color`, `--no-color`. Env vars: `PENSA_VERBOSE`, `PENSA_QUIET`, `PENSA_COLOR`.
+- Configurable download concurrency. Defaults to 50, override via `PENSA_CONCURRENT_DOWNLOADS`.
+- Structural lock validation.
+- HTTP conditional requests.
+- Speculative version prefetch. Prefetches next 10 versions during solving to hide backtracking latency.
+
+### Changed
+
+- Feedback UI standardized.
+- Resolution cache batched writes. `Put()` is in-memory only, single `Flush()` after solving. CPU dropped from 12s to 0.7s on medium-sized workspace.
+- PackageInfo served from resolution cache. Avoids parsing large JSON Simple API responses on warm runs.
+- Use `goccy/go-json`. Drop-in 2-3x faster JSON parser.
+- Download concurrency increased from 8 to 50 workers.
+
+### Fixed
+
+- requires-python filtering.
+- Skip incompatible packages on install.
+- `pensa show`/`list`/`tree` in workspaces.
+
+### Performance
+
+Benchmarks on Trio (~40 packages), macOS Apple Silicon:
+
+| Scenario | uv | pensa v0.1.0 | pensa v0.2.0 |
+|---|---|---|---|
+| Resolve cold | 239ms | ~5s | **1.5s** |
+| Resolve warm | 8ms | ~5s | **724ms** |
+| Resolve no-op | 4ms | ~5s | **10ms** |
+| Install cold | 1.5s | ~8s | **3.0s** |
+
 ## [0.1.0] - 2026-03-24
 
 First release. A Python package and project manager written in Go.
@@ -37,5 +77,6 @@ First release. A Python package and project manager written in Go.
 - Formatted tables for `list` output
 - Python discovery via pyenv, asdf, mise, homebrew, and conda
 
-[Unreleased]: https://github.com/juanbzz/pensa/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/juanbzz/pensa/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/juanbzz/pensa/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/juanbzz/pensa/releases/tag/v0.1.0
