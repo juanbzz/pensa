@@ -104,11 +104,24 @@ func (ins *Installer) buildFromSdist(pkg lockfile.LockedPackage) (string, error)
 	})
 }
 
-// InstallFromCache unpacks a cached wheel into site-packages and installs entry points.
+// InstallFromCache installs a wheel into site-packages via hard-link from
+// a pre-extracted global cache. Falls back to direct extraction if caching fails.
 func (ins *Installer) InstallFromCache(pkg lockfile.LockedPackage, wheelPath string) error {
 	sitePackages := ins.python.SitePackagesDir(ins.venvPath)
-	if err := UnpackWheel(wheelPath, sitePackages); err != nil {
-		return fmt.Errorf("unpack wheel: %w", err)
+
+	// Try: extract to cache once, then hard-link to site-packages.
+	if extractDir, err := extractToCache(wheelPath, ins.cacheDir); err == nil {
+		if err := linkToSitePackages(extractDir, sitePackages); err != nil {
+			// Hard-link failed — fall back to direct extraction.
+			if err := UnpackWheel(wheelPath, sitePackages); err != nil {
+				return fmt.Errorf("unpack wheel: %w", err)
+			}
+		}
+	} else {
+		// Cache extraction failed — fall back to direct extraction.
+		if err := UnpackWheel(wheelPath, sitePackages); err != nil {
+			return fmt.Errorf("unpack wheel: %w", err)
+		}
 	}
 
 	distInfo, err := FindDistInfo(sitePackages, pkg.Name, pkg.Version)
