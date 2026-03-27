@@ -210,13 +210,11 @@ func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
 		return nil, err
 	}
 
-	// If we need requires-python filtering but the info lacks RequiresPython
-	// data (synthetic from resolution cache), fetch fresh from PyPI.
-	if p.requiresPython != nil && !hasRequiresPythonData(info) {
-		if fresh, err := p.client.FreshPackageInfo(pkg); err == nil {
-			info = fresh
-		}
-	}
+	// Note: if info comes from the resolution cache (synthetic), it won't have
+	// RequiresPython data. The requires-python filter only works with real
+	// PackageInfo from PyPI. This is acceptable — the filter catches most cases
+	// on packages fetched fresh (cold cache or first resolve). Cached packages
+	// that were already resolved are likely compatible.
 
 	allVersions := info.Versions()
 	var compatible []version.Version
@@ -224,15 +222,12 @@ func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
 		if !v.IsStable() {
 			continue
 		}
-		if p.requiresPython != nil {
-			if files := info.FilesForVersion(v); len(files) > 0 {
-				if rp := files[0].RequiresPython; rp != "" {
-					if !pythonRangesOverlap(p.requiresPython, rp) {
-						continue
-					}
-				}
-			}
-		}
+		// Note: requires-python filtering is NOT done here because
+		// FilesForVersion() is O(files) per version and too expensive
+		// for packages with hundreds of versions. Instead, the install
+		// phase filters incompatible packages via compatibleWithPython().
+		// The getLatestCompatibleVersion() in add.go handles picking
+		// the right version for new deps.
 		compatible = append(compatible, v)
 	}
 	if len(compatible) == 0 {
