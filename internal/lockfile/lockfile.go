@@ -237,9 +237,11 @@ func buildLockedPackage(client *index.PyPIClient, name string, ver version.Versi
 				continue
 			}
 		}
+		constraint := "*"
 		if dep.Constraint != nil {
-			pkg.Dependencies[dep.Name] = dep.Constraint.String()
+			constraint = dep.Constraint.String()
 		}
+		pkg.Dependencies[dep.Name] = constraint
 	}
 
 	return pkg, nil

@@ -75,6 +75,7 @@ Use "{{flagStyle .CommandPath}} [command] --help" for more information about a c
 	cmd.AddCommand(newListCmd())
 	cmd.AddCommand(newShowCmd())
 	cmd.AddCommand(newTreeCmd())
+	cmd.AddCommand(newWhyCmd())
 
 	return cmd
 }
