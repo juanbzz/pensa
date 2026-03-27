@@ -90,6 +90,12 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
 
+	// Parse project's requires-python for version filtering.
+	var requiresPython version.Constraint
+	if proj.HasProjectSection() && proj.Project.RequiresPython != "" {
+		requiresPython, _ = version.ParseConstraint(proj.Project.RequiresPython)
+	}
+
 	client, err := newPyPIClient()
 	if err != nil {
 		return err
@@ -129,7 +135,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	cached := index.NewCachedClient(client, resCache)
 	prefetchPackages(cached, resolverDeps, cfg.ConcurrentDownloads)
 
-	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras, prefetchSem: make(chan struct{}, cfg.ConcurrentDownloads)}
+	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras, prefetchSem: make(chan struct{}, cfg.ConcurrentDownloads), requiresPython: requiresPython}
 
 	// Wrap provider to prefer locked versions unless upgrading.
 	var solverProvider resolve.Provider = baseProvider
@@ -195,6 +201,7 @@ type indexProvider struct {
 	client          *index.CachedClient
 	requestedExtras map[string][]string // normalized pkg name → requested extras
 	prefetchSem     chan struct{}       // bounds background prefetch concurrency
+	requiresPython  version.Constraint  // project's requires-python, nil if unset
 }
 
 func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
@@ -202,19 +209,58 @@ func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Filter out pre-release versions by default.
-	allVersions := info.Versions()
-	var stable []version.Version
-	for _, v := range allVersions {
-		if v.IsStable() {
-			stable = append(stable, v)
+
+	// If we need requires-python filtering but the info lacks RequiresPython
+	// data (synthetic from resolution cache), fetch fresh from PyPI.
+	if p.requiresPython != nil && !hasRequiresPythonData(info) {
+		if fresh, err := p.client.FreshPackageInfo(pkg); err == nil {
+			info = fresh
 		}
 	}
-	// Fall back to all versions if no stable versions exist.
-	if len(stable) == 0 {
+
+	allVersions := info.Versions()
+	var compatible []version.Version
+	for _, v := range allVersions {
+		if !v.IsStable() {
+			continue
+		}
+		if p.requiresPython != nil {
+			if files := info.FilesForVersion(v); len(files) > 0 {
+				if rp := files[0].RequiresPython; rp != "" {
+					if !pythonRangesOverlap(p.requiresPython, rp) {
+						continue
+					}
+				}
+			}
+		}
+		compatible = append(compatible, v)
+	}
+	if len(compatible) == 0 {
 		return allVersions, nil
 	}
-	return stable, nil
+	return compatible, nil
+}
+
+func hasRequiresPythonData(info *index.PackageInfo) bool {
+	for _, f := range info.Files {
+		if f.RequiresPython != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// pythonRangesOverlap checks if a package's requires-python is compatible
+// with the project's requires-python. The package must support ALL Python
+// versions the project targets. E.g., project >=3.10 + package >=3.12 = incompatible
+// because the package doesn't work on 3.10-3.11.
+func pythonRangesOverlap(projectPython version.Constraint, pkgRequiresPython string) bool {
+	pkgConstraint, err := version.ParseConstraint(pkgRequiresPython)
+	if err != nil {
+		return true // can't parse, don't filter
+	}
+	// Package must allow all versions the project supports.
+	return pkgConstraint.AllowsAll(projectPython)
 }
 
 func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve.Dependency, error) {
@@ -348,6 +394,12 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	// Parse workspace's requires-python for version filtering.
+	var requiresPython version.Constraint
+	if ws.Project.HasProjectSection() && ws.Project.Project.RequiresPython != "" {
+		requiresPython, _ = version.ParseConstraint(ws.Project.Project.RequiresPython)
+	}
+
 	client, err := newPyPIClient()
 	if err != nil {
 		return err
@@ -357,7 +409,7 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 	cached := index.NewCachedClient(client, resCache)
 	prefetchPackages(cached, resolverDeps, cfg.ConcurrentDownloads)
 
-	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras, prefetchSem: make(chan struct{}, cfg.ConcurrentDownloads)}
+	baseProvider := &indexProvider{client: cached, requestedExtras: depExtras, prefetchSem: make(chan struct{}, cfg.ConcurrentDownloads), requiresPython: requiresPython}
 
 	// Wrap provider to prefer locked versions unless upgrading.
 	var solverProvider resolve.Provider = baseProvider

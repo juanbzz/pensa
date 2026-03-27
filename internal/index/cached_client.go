@@ -22,6 +22,20 @@ func NewCachedClient(client *PyPIClient, resCache *ResolutionCache) *CachedClien
 	return &CachedClient{client: client, resCache: resCache}
 }
 
+// FreshPackageInfo bypasses the resolution cache and fetches full PackageInfo
+// from PyPI (disk cache or network). Use when RequiresPython data is needed.
+func (c *CachedClient) FreshPackageInfo(name string) (*PackageInfo, error) {
+	normalized := pep508.NormalizeName(name)
+
+	info, err := c.client.GetPackageInfo(name)
+	if err != nil {
+		return nil, err
+	}
+
+	c.packages.Store(normalized, info)
+	return info, nil
+}
+
 func (c *CachedClient) GetPackageInfo(name string) (*PackageInfo, error) {
 	normalized := pep508.NormalizeName(name)
 	if v, ok := c.packages.Load(normalized); ok {

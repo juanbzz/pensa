@@ -10,6 +10,7 @@ import (
 	"github.com/juanbzz/pensa/internal/index"
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/python"
 	"github.com/juanbzz/pensa/internal/workspace"
 	"github.com/juanbzz/pensa/pkg/pep508"
 	"github.com/juanbzz/pensa/pkg/version"
@@ -71,14 +72,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Read existing lock file to check for transitive dependency versions.
 	lockDir := dir
 	if ws != nil {
 		lockDir = ws.Root
-	}
-	var lf *lockfile.LockFile
-	if lockPath, _ := lockfile.DetectLockFile(lockDir); lockPath != "" {
-		lf, _ = lockfile.ReadLockFile(lockPath)
 	}
 
 	type addedPkg struct {
@@ -95,15 +91,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		name = pep508.NormalizeName(name)
 
 		if constraintStr == "" {
-			if v := lockedVersion(lf, name); v != "" {
-				constraintStr = fmt.Sprintf("^%s", v)
-			} else {
-				latest, err := getLatestVersion(client, name)
-				if err != nil {
-					return fmt.Errorf("find latest version of %s: %w", name, err)
-				}
-				constraintStr = fmt.Sprintf("^%s", latest)
+			var requiresPython version.Constraint
+			if proj.HasProjectSection() && proj.Project.RequiresPython != "" {
+				requiresPython, _ = version.ParseConstraint(proj.Project.RequiresPython)
 			}
+			latest, err := getLatestCompatibleVersion(client, name, requiresPython)
+			if err != nil {
+				return fmt.Errorf("find latest version of %s: %w", name, err)
+			}
+			constraintStr = fmt.Sprintf("^%s", latest)
 			// Version discovery is silent; resolved version shown after lock.
 		}
 
@@ -149,16 +145,28 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	if lockPath, _ := lockfile.DetectLockFile(lockDir); lockPath != "" {
 		if lf, err := lockfile.ReadLockFile(lockPath); err == nil {
-			locked := make(map[string]string, len(lf.Packages))
+			lockedPkgs := make(map[string]lockfile.LockedPackage, len(lf.Packages))
 			for _, p := range lf.Packages {
-				locked[normalizeName(p.Name)] = p.Version
+				lockedPkgs[normalizeName(p.Name)] = p
 			}
+			// Only show diff for packages that would actually be installed
+			// (compatible with current Python).
+			py, _ := python.Discover()
 			for _, pkg := range addedNames {
+				lp, ok := lockedPkgs[normalizeName(pkg.name)]
+				if !ok {
+					continue
+				}
+				if py != nil && !compatibleWithPython(lp, py) {
+					out.Warning(fmt.Sprintf("%s==%s requires Python %s (you have %s)",
+						lp.Name, lp.Version, lp.PythonVersions, py.Version))
+					continue
+				}
 				displayName := pkg.name
 				if len(pkg.extras) > 0 {
 					displayName += "[" + strings.Join(pkg.extras, ",") + "]"
 				}
-				out.DiffAdd(displayName, locked[normalizeName(pkg.name)])
+				out.DiffAdd(displayName, lp.Version)
 			}
 		}
 	}
@@ -221,6 +229,47 @@ func findPEP508Operator(s string) int {
 }
 
 // getLatestVersion queries PyPI for the latest stable version of a package.
+// getLatestCompatibleVersion returns the latest stable version that's compatible
+// with the project's requires-python. Falls back to latest stable if no filter.
+func getLatestCompatibleVersion(client *index.PyPIClient, name string, requiresPython version.Constraint) (version.Version, error) {
+	info, err := client.GetPackageInfo(name)
+	if err != nil {
+		return version.Version{}, err
+	}
+	versions := info.Versions()
+	if len(versions) == 0 {
+		return version.Version{}, fmt.Errorf("no versions found for %s", name)
+	}
+
+	sort.Slice(versions, func(i, j int) bool {
+		return version.Compare(versions[i], versions[j]) > 0
+	})
+
+	for _, v := range versions {
+		if !v.IsStable() {
+			continue
+		}
+		if requiresPython != nil {
+			if files := info.FilesForVersion(v); len(files) > 0 {
+				if rp := files[0].RequiresPython; rp != "" {
+					if !pythonRangesOverlap(requiresPython, rp) {
+						continue
+					}
+				}
+			}
+		}
+		return v, nil
+	}
+
+	// Fallback: return latest stable without filtering.
+	for _, v := range versions {
+		if v.IsStable() {
+			return v, nil
+		}
+	}
+	return versions[0], nil
+}
+
 func getLatestVersion(client *index.PyPIClient, name string) (version.Version, error) {
 	info, err := client.GetPackageInfo(name)
 	if err != nil {

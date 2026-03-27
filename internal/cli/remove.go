@@ -128,7 +128,9 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	// Show what was removed.
 	for _, name := range removedPkgs {
-		out.DiffRemove(name, lockedVersions[name])
+		if ver := lockedVersions[name]; ver != "" {
+			out.DiffRemove(name, ver)
+		}
 	}
 
 	return nil
