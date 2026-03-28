@@ -164,8 +164,8 @@ func (ins *Installer) downloadFile(filename, url, expectedHash, subdir string) (
 		return filePath, nil
 	}
 
-	// Download.
-	resp, err := http.Get(url)
+	// Download via the injected HTTP client.
+	resp, err := ins.client.HTTPClient().Get(url)
 	if err != nil {
 		return "", fmt.Errorf("download %s: %w", filename, err)
 	}

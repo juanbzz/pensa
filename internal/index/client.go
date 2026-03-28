@@ -62,6 +62,9 @@ func NewPyPIClient(opts ...Option) *PyPIClient {
 	return c
 }
 
+// HTTPClient returns the underlying HTTP client for direct use.
+func (c *PyPIClient) HTTPClient() *http.Client { return c.httpClient }
+
 // GetPackageInfo fetches the Simple API listing for a package.
 // Uses HTTP conditional requests (ETag/304) to avoid re-downloading unchanged data.
 func (c *PyPIClient) GetPackageInfo(name string) (*PackageInfo, error) {
