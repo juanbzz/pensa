@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	goRuntime "runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/juanbzz/pensa/internal/config"
@@ -17,7 +16,6 @@ import (
 	"github.com/juanbzz/pensa/internal/workspace"
 	"github.com/juanbzz/pensa/pkg/version"
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 )
 
 func newInstallCmd() *cobra.Command {
@@ -154,47 +152,13 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 		return nil
 	}
 
-	cfg, _ := config.New()
-
-	// Phase 1: Download all wheels in parallel.
-	type downloadResult struct {
-		pkg       lockfile.LockedPackage
-		wheelPath string
-	}
-
-	stop := downloadSpinner(w, len(toInstall))
-
-	var mu sync.Mutex
-	var results []downloadResult
-
-	g := new(errgroup.Group)
-	downloadLimit := 50
-	if cfg != nil && cfg.ConcurrentDownloads > 0 {
-		downloadLimit = cfg.ConcurrentDownloads
-	}
-	g.SetLimit(downloadLimit)
-
-	for _, pkg := range toInstall {
-		pkg := pkg
-		g.Go(func() error {
-			path, err := ins.ResolvePackage(pkg)
-			if err != nil {
-				return fmt.Errorf("download %s: %w", pkg.Name, err)
-			}
-			mu.Lock()
-			results = append(results, downloadResult{pkg, path})
-			mu.Unlock()
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		stop()
+	results, err := downloadPackages(w, ins, toInstall)
+	if err != nil {
 		return err
 	}
-	stop()
 
 	// Phase 2: Install sequentially from cache.
+	cfg, _ := config.New()
 	verbose := cfg != nil && cfg.Verbose
 	out := newUI(w, verbose, cfg != nil && cfg.Quiet)
 
