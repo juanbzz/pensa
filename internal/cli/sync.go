@@ -137,9 +137,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 	// Install missing.
 	if len(toInstall) > 0 {
 		cacheDir := defaultCacheDir()
-		if err != nil {
-			return err
-		}
 		client, err := newPyPIClient()
 		if err != nil {
 			return err

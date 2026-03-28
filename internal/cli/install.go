@@ -107,9 +107,6 @@ func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool
 
 	// Create installer.
 	cacheDir := defaultCacheDir()
-	if err != nil {
-		return err
-	}
 	client, err := newPyPIClient()
 	if err != nil {
 		return err
