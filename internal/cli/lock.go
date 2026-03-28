@@ -131,7 +131,10 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		})
 	}
 
-	resCache := index.NewResolutionCache(defaultCacheDir())
+	resCache, err := index.NewResolutionCache(defaultCacheDir())
+	if err != nil {
+		return fmt.Errorf("resolution cache: %w", err)
+	}
 	cached := index.NewCachedClient(client, resCache)
 	prefetchPackages(cached, resolverDeps, cfg.ConcurrentDownloads)
 
@@ -405,7 +408,10 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		return err
 	}
 
-	resCache := index.NewResolutionCache(defaultCacheDir())
+	resCache, err := index.NewResolutionCache(defaultCacheDir())
+	if err != nil {
+		return fmt.Errorf("resolution cache: %w", err)
+	}
 	cached := index.NewCachedClient(client, resCache)
 	prefetchPackages(cached, resolverDeps, cfg.ConcurrentDownloads)
 

@@ -34,10 +34,12 @@ type ResolutionCache struct {
 	dirty sync.Map // string → bool (names needing disk flush)
 }
 
-func NewResolutionCache(cacheDir string) *ResolutionCache {
+func NewResolutionCache(cacheDir string) (*ResolutionCache, error) {
 	dir := filepath.Join(cacheDir, "resolution")
-	os.MkdirAll(dir, 0755)
-	return &ResolutionCache{dir: dir}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("create resolution cache dir: %w", err)
+	}
+	return &ResolutionCache{dir: dir}, nil
 }
 
 func (rc *ResolutionCache) Get(name string) (*ResolutionPackage, error) {

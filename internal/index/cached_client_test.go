@@ -212,7 +212,7 @@ func TestCachedClient_GetPackageInfo_FromResolutionCache(t *testing.T) {
 	}
 
 	// Pre-populate resolution cache.
-	resCache := NewResolutionCache(t.TempDir())
+	resCache, _ := NewResolutionCache(t.TempDir())
 	resCache.Put(&ResolutionPackage{
 		Name:     "mypkg",
 		Versions: []string{"2.0.0", "1.0.0"},
@@ -253,7 +253,7 @@ func TestCachedClient_GetPackageInfo_FromResolutionCache_PEP658(t *testing.T) {
 	}
 
 	// Pre-populate resolution cache with PEP 658 + wheel URL.
-	resCache := NewResolutionCache(t.TempDir())
+	resCache, _ := NewResolutionCache(t.TempDir())
 	resCache.Put(&ResolutionPackage{
 		Name:     "mypkg",
 		Versions: []string{"1.0.0"},
