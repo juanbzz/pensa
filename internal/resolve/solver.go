@@ -8,8 +8,11 @@ import (
 	"github.com/juanbzz/pensa/pkg/version"
 )
 
-// sentinel value for conflict detection.
-var conflict = &struct{}{}
+// propagateResult represents the outcome of propagating an incompatibility.
+type propagateResult struct {
+	conflict bool   // true if all terms are satisfied (conflict detected)
+	pkg      string // non-empty when a new derivation was added for this package
+}
 
 // SolveError indicates the resolver could not find a valid solution.
 type SolveError struct {
@@ -169,23 +172,23 @@ func (s *Solver) propagate(pkg string) error {
 			}
 			result := s.propagateIncompatibility(incompats[i])
 
-			if result == conflict {
+			if result.conflict {
 				rootCause, err := s.resolveConflict(incompats[i])
 				if err != nil {
 					return err
 				}
 				result2 := s.propagateIncompatibility(rootCause)
-				if result2 == conflict {
+				if result2.conflict {
 					return fmt.Errorf("BUG: propagation after conflict resolution yielded another conflict")
 				}
-				if pkgName, ok := result2.(string); ok {
-					changed = map[string]bool{pkgName: true}
+				if result2.pkg != "" {
+					changed = map[string]bool{result2.pkg: true}
 				}
 				break
 			}
 
-			if pkgName, ok := result.(string); ok {
-				changed[pkgName] = true
+			if result.pkg != "" {
+				changed[result.pkg] = true
 			}
 		}
 	}
@@ -193,7 +196,7 @@ func (s *Solver) propagate(pkg string) error {
 	return nil
 }
 
-func (s *Solver) propagateIncompatibility(incompat *Incompatibility) interface{} {
+func (s *Solver) propagateIncompatibility(incompat *Incompatibility) propagateResult {
 	var unsatisfied *Term
 
 	for i := range incompat.Terms {
@@ -202,26 +205,26 @@ func (s *Solver) propagateIncompatibility(incompat *Incompatibility) interface{}
 
 		if rel == Disjoint {
 			s.contradicted[incompat] = true
-			return nil
+			return propagateResult{}
 		}
 
 		if rel == Overlapping {
 			if unsatisfied != nil {
-				return nil
+				return propagateResult{}
 			}
 			unsatisfied = t
 		}
 	}
 
 	if unsatisfied == nil {
-		return conflict
+		return propagateResult{conflict: true}
 	}
 
 	s.contradicted[incompat] = true
 
 	inv := unsatisfied.Inverse()
 	s.solution.Derive(inv, incompat)
-	return unsatisfied.Pkg
+	return propagateResult{pkg: unsatisfied.Pkg}
 }
 
 func (s *Solver) resolveConflict(incompat *Incompatibility) (*Incompatibility, error) {
