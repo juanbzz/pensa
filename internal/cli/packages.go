@@ -99,3 +99,14 @@ func buildPackageIndex(pkgs []lockfile.LockedPackage) map[string]lockfile.Locked
 	}
 	return idx
 }
+
+// depNameFromPEP508 extracts the package name from a PEP 508 dependency string.
+// This is a simple extraction — just the name before any version specifier.
+func depNameFromPEP508(s string) string {
+	for i, c := range s {
+		if c == '>' || c == '<' || c == '=' || c == '!' || c == '~' || c == '^' || c == '[' || c == ';' || c == ' ' {
+			return strings.TrimSpace(s[:i])
+		}
+	}
+	return strings.TrimSpace(s)
+}

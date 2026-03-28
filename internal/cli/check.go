@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
@@ -91,14 +90,3 @@ func pluralize(n int, singular, plural string) string {
 	return plural
 }
 
-// depNameFromPEP508 extracts the package name from a PEP 508 dependency string.
-// This is a simple extraction — just the name before any version specifier.
-func depNameFromPEP508(s string) string {
-	// Find the first non-name character.
-	for i, c := range s {
-		if c == '>' || c == '<' || c == '=' || c == '!' || c == '~' || c == '^' || c == '[' || c == ';' || c == ' ' {
-			return strings.TrimSpace(s[:i])
-		}
-	}
-	return strings.TrimSpace(s)
-}
