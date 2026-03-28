@@ -12,6 +12,8 @@ type lockOptions struct {
 	upgradePackages []string // ignore pinned versions for these packages only
 }
 
+var _ resolve.Provider = (*lockedProvider)(nil)
+
 // lockedProvider wraps a resolve.Provider to prefer already-locked versions.
 // When a package has a pinned version, it's moved to the front of the version
 // list so the solver picks it first. If the pinned version no longer satisfies

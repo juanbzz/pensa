@@ -6,6 +6,8 @@ import (
 	"github.com/juanbzz/pensa/pkg/version"
 )
 
+var _ resolve.Provider = (*prefetchProvider)(nil)
+
 // prefetchProvider wraps a resolve.Provider and speculatively prefetches
 // GetVersionDetail for upcoming candidate versions when the solver commits
 // to a version. This hides network latency when the solver backtracks.

@@ -196,6 +196,8 @@ func newPyPIClient() (*index.PyPIClient, error) {
 	), nil
 }
 
+var _ resolve.Provider = (*indexProvider)(nil)
+
 // indexProvider bridges resolve.Provider ↔ index.PyPIClient.
 type indexProvider struct {
 	client          *index.CachedClient
