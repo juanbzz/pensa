@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	goRuntime "runtime"
@@ -61,7 +62,7 @@ func resolveInstallGroups(noDev bool, withGroups []string, onlyGroup string) []s
 // If installRoot is true, also installs the project itself in editable mode.
 // groups controls which dependency groups to install (nil = all).
 // Shared between `install`, `add`, `update`, and `remove` commands.
-func installFromLock(w interface{ Write([]byte) (int, error) }, installRoot bool, groups []string) error {
+func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 	start := time.Now()
 
 	dir, err := os.Getwd()
