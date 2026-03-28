@@ -295,6 +295,10 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 	}
 
 	// Background prefetch: warm the cache for discovered deps.
+	// These are intentionally fire-and-forget — they're best-effort cache
+	// warmers. Errors are ignored, and incomplete prefetches on fast exit
+	// are harmless (the cache is populated on the next run). Concurrency
+	// is bounded by prefetchSem.
 	for _, d := range deps {
 		go func(name string) {
 			p.prefetchSem <- struct{}{}
