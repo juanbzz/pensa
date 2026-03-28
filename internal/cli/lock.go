@@ -162,7 +162,10 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	}
 
 	// Flush resolution cache to disk in a single batch.
-	resCache.Flush()
+	if err := resCache.Flush(); err != nil {
+		// Cache flush failure is non-fatal — resolution succeeded.
+		newUI(w, false, false).Warning(fmt.Sprintf("flush resolution cache: %s", err))
+	}
 
 	pythonVersions := ">=3.8"
 	if proj.HasProjectSection() && proj.Project.RequiresPython != "" {
@@ -433,7 +436,10 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 	}
 
 	// Flush resolution cache to disk in a single batch.
-	resCache.Flush()
+	if err := resCache.Flush(); err != nil {
+		// Cache flush failure is non-fatal — resolution succeeded.
+		newUI(w, false, false).Warning(fmt.Sprintf("flush resolution cache: %s", err))
+	}
 
 	pythonVersions := ">=3.8"
 	if ws.Project.HasProjectSection() && ws.Project.Project.RequiresPython != "" {

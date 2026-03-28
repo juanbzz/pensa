@@ -1,6 +1,7 @@
 package index
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,20 +67,30 @@ func (rc *ResolutionCache) Put(pkg *ResolutionPackage) error {
 }
 
 // Flush writes all dirty entries to disk and clears the dirty set.
-func (rc *ResolutionCache) Flush() {
+func (rc *ResolutionCache) Flush() error {
+	var firstErr error
 	rc.dirty.Range(func(key, _ any) bool {
 		name := key.(string)
 		if v, ok := rc.mem.Load(name); ok {
 			pkg := v.(*ResolutionPackage)
 			data, err := msgpack.Marshal(pkg)
-			if err == nil {
-				path := filepath.Join(rc.dir, name+".msgpack")
-				os.WriteFile(path, data, 0644)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("marshal %s: %w", name, err)
+				}
+				return true
+			}
+			path := filepath.Join(rc.dir, name+".msgpack")
+			if err := os.WriteFile(path, data, 0644); err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("write %s: %w", name, err)
+				}
 			}
 		}
 		rc.dirty.Delete(name)
 		return true
 	})
+	return firstErr
 }
 
 // ToVersionDetail converts a ResolutionEntry back to a VersionDetail.
