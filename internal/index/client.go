@@ -199,8 +199,8 @@ type simpleFileJSON struct {
 	URL            string            `json:"url"`
 	Hashes         map[string]string `json:"hashes"`
 	RequiresPython *string           `json:"requires-python"`
-	CoreMetadata   interface{}       `json:"core-metadata"`
-	Yanked         interface{}       `json:"yanked"`
+	CoreMetadata   any       `json:"core-metadata"`
+	Yanked         any       `json:"yanked"`
 }
 
 func (c *PyPIClient) parseSimpleJSON(name string, data []byte) (*PackageInfo, error) {
@@ -225,7 +225,7 @@ func (c *PyPIClient) parseSimpleJSON(name string, data []byte) (*PackageInfo, er
 		switch cm := f.CoreMetadata.(type) {
 		case bool:
 			fi.CoreMetadata = cm
-		case map[string]interface{}:
+		case map[string]any:
 			fi.CoreMetadata = len(cm) > 0
 		}
 

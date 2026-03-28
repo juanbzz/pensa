@@ -36,7 +36,7 @@ type packageTOML struct {
 	PythonVersions string            `toml:"python-versions"`
 	Groups         []string          `toml:"groups"`
 	Files          []fileTOML        `toml:"files"`
-	Dependencies   map[string]interface{} `toml:"dependencies"`
+	Dependencies   map[string]any `toml:"dependencies"`
 	Extras         map[string][]string    `toml:"extras"`
 }
 
@@ -92,7 +92,7 @@ func ParseLockFile(data []byte) (*LockFile, error) {
 			switch v := val.(type) {
 			case string:
 				locked.Dependencies[name] = v
-			case map[string]interface{}:
+			case map[string]any:
 				if ver, ok := v["version"]; ok {
 					if vs, ok := ver.(string); ok {
 						locked.Dependencies[name] = vs

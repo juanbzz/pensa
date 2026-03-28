@@ -9,8 +9,8 @@ import (
 )
 
 // ParsePoetryDependency converts a Poetry-style dependency entry into a Dependency.
-// name is the package name, value is the TOML value (string or map[string]interface{}).
-func ParsePoetryDependency(name string, value interface{}) (pep508.Dependency, error) {
+// name is the package name, value is the TOML value (string or map[string]any).
+func ParsePoetryDependency(name string, value any) (pep508.Dependency, error) {
 	dep := pep508.Dependency{
 		Name: pep508.NormalizeName(name),
 	}
@@ -24,7 +24,7 @@ func ParsePoetryDependency(name string, value interface{}) (pep508.Dependency, e
 		dep.Constraint = c
 		return dep, nil
 
-	case map[string]interface{}:
+	case map[string]any:
 		return parsePoetryTable(dep, v)
 
 	default:
@@ -32,7 +32,7 @@ func ParsePoetryDependency(name string, value interface{}) (pep508.Dependency, e
 	}
 }
 
-func parsePoetryTable(dep pep508.Dependency, table map[string]interface{}) (pep508.Dependency, error) {
+func parsePoetryTable(dep pep508.Dependency, table map[string]any) (pep508.Dependency, error) {
 	if v, ok := table["version"]; ok {
 		if vs, ok := v.(string); ok {
 			c, err := version.ParseConstraint(vs)
@@ -45,7 +45,7 @@ func parsePoetryTable(dep pep508.Dependency, table map[string]interface{}) (pep5
 
 	if v, ok := table["extras"]; ok {
 		switch extras := v.(type) {
-		case []interface{}:
+		case []any:
 			for _, e := range extras {
 				if s, ok := e.(string); ok {
 					dep.Extras = append(dep.Extras, pep508.NormalizeName(s))
@@ -281,7 +281,7 @@ func (p *PyProject) resolvePEP735Group(groupName, originGroup string, seen map[s
 				return nil, fmt.Errorf("parse dependency in group %q: %w", groupName, err)
 			}
 			result = append(result, GroupedDependency{Dep: d, Group: originGroup})
-		case map[string]interface{}:
+		case map[string]any:
 			if includeGroup, ok := v["include-group"]; ok {
 				if name, ok := includeGroup.(string); ok {
 					deps, err := p.resolvePEP735Group(name, originGroup, seen)

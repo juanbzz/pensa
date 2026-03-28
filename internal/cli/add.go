@@ -303,7 +303,7 @@ func addToProject(proj *pyproject.PyProject, name, constraint string) {
 	} else if proj.HasPoetrySection() {
 		// Poetry format: add to [tool.poetry.dependencies].
 		if proj.Tool.Poetry.Dependencies == nil {
-			proj.Tool.Poetry.Dependencies = make(map[string]interface{})
+			proj.Tool.Poetry.Dependencies = make(map[string]any)
 		}
 		proj.Tool.Poetry.Dependencies[name] = constraint
 	} else {
@@ -350,7 +350,7 @@ func addToGroup(proj *pyproject.PyProject, name, constraint, group string) {
 	}
 	g := proj.Tool.Poetry.Groups[group]
 	if g.Dependencies == nil {
-		g.Dependencies = make(map[string]interface{})
+		g.Dependencies = make(map[string]any)
 	}
 	g.Dependencies[name] = constraint
 	proj.Tool.Poetry.Groups[group] = g
@@ -379,9 +379,9 @@ func addToProjectWithExtras(proj *pyproject.PyProject, name, constraint string, 
 	} else if proj.HasPoetrySection() {
 		// Poetry table format: {version = "^2.28", extras = ["security"]}
 		if proj.Tool.Poetry.Dependencies == nil {
-			proj.Tool.Poetry.Dependencies = make(map[string]interface{})
+			proj.Tool.Poetry.Dependencies = make(map[string]any)
 		}
-		proj.Tool.Poetry.Dependencies[name] = map[string]interface{}{
+		proj.Tool.Poetry.Dependencies[name] = map[string]any{
 			"version": constraint,
 			"extras":  extras,
 		}
@@ -411,9 +411,9 @@ func addToGroupWithExtras(proj *pyproject.PyProject, name, constraint, group str
 	}
 	g := proj.Tool.Poetry.Groups[group]
 	if g.Dependencies == nil {
-		g.Dependencies = make(map[string]interface{})
+		g.Dependencies = make(map[string]any)
 	}
-	g.Dependencies[name] = map[string]interface{}{
+	g.Dependencies[name] = map[string]any{
 		"version": constraint,
 		"extras":  extras,
 	}
@@ -423,7 +423,7 @@ func addToGroupWithExtras(proj *pyproject.PyProject, name, constraint, group str
 // addToDependencyGroup adds a dep to [dependency-groups] (PEP 735 format).
 func addToDependencyGroup(proj *pyproject.PyProject, name, constraint string, extras []string, group string) {
 	if proj.DependencyGroups == nil {
-		proj.DependencyGroups = make(map[string][]interface{})
+		proj.DependencyGroups = make(map[string][]any)
 	}
 
 	depStr := name

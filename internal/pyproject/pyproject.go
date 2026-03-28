@@ -14,7 +14,7 @@ type PyProject struct {
 	Project          *ProjectTable            `toml:"project,omitempty"`
 	Tool             *ToolTable               `toml:"tool,omitempty"`
 	BuildSystem      *BuildSystem             `toml:"build-system,omitempty"`
-	DependencyGroups map[string][]interface{} `toml:"dependency-groups,omitempty"`
+	DependencyGroups map[string][]any `toml:"dependency-groups,omitempty"`
 }
 
 // ProjectTable represents the [project] section (PEP 621).
@@ -80,19 +80,19 @@ type PoetryTable struct {
 	Description  string                        `toml:"description,omitempty"`
 	License      string                        `toml:"license,omitempty"`
 	Authors      []string                      `toml:"authors,omitempty"`
-	Readme       interface{}                   `toml:"readme,omitempty"`
+	Readme       any                   `toml:"readme,omitempty"`
 	PackageMode  *bool                         `toml:"package-mode,omitempty"`
 	Packages     []PoetryPackage               `toml:"packages,omitempty"`
-	Dependencies map[string]interface{}         `toml:"dependencies,omitempty"`
+	Dependencies map[string]any         `toml:"dependencies,omitempty"`
 	Groups       map[string]PoetryGroup         `toml:"group,omitempty"`
-	Scripts      map[string]interface{}         `toml:"scripts,omitempty"`
+	Scripts      map[string]any         `toml:"scripts,omitempty"`
 	Extras       map[string][]string           `toml:"extras,omitempty"`
 	Source       []PoetrySource                `toml:"source,omitempty"`
 }
 
 // PoetryGroup represents a [tool.poetry.group.NAME] section.
 type PoetryGroup struct {
-	Dependencies map[string]interface{} `toml:"dependencies,omitempty"`
+	Dependencies map[string]any `toml:"dependencies,omitempty"`
 }
 
 // PoetryPackage represents a package entry in [tool.poetry.packages].
@@ -100,7 +100,7 @@ type PoetryPackage struct {
 	Include string      `toml:"include"`
 	From    string      `toml:"from,omitempty"`
 	To      string      `toml:"to,omitempty"`
-	Format  interface{} `toml:"format,omitempty"`
+	Format  any `toml:"format,omitempty"`
 }
 
 // PoetrySource represents a [[tool.poetry.source]] entry.
@@ -224,8 +224,8 @@ func (p *PyProject) DependencyHash() string {
 		RequiresPython       string                        `json:"rp,omitempty"`
 		Dependencies         []string                      `json:"d,omitempty"`
 		OptionalDependencies map[string][]string           `json:"od,omitempty"`
-		DependencyGroups     map[string][]interface{}      `json:"dg,omitempty"`
-		PoetryDeps           map[string]interface{}        `json:"pd,omitempty"`
+		DependencyGroups     map[string][]any      `json:"dg,omitempty"`
+		PoetryDeps           map[string]any        `json:"pd,omitempty"`
 		PoetryGroups         map[string]PoetryGroup        `json:"pg,omitempty"`
 		PoetryExtras         map[string][]string           `json:"pe,omitempty"`
 		PoetrySources        []PoetrySource                `json:"ps,omitempty"`
