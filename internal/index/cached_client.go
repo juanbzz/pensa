@@ -15,11 +15,18 @@ type CachedClient struct {
 	resCache  *ResolutionCache
 	packages  sync.Map // string → *PackageInfo
 	details   sync.Map // string → *VersionDetail
-	resMu     sync.Mutex // protects resolution cache read-modify-write
+	resMu     sync.Mutex    // protects resolution cache read-modify-write
+	wg        sync.WaitGroup // tracks background cache update goroutines
 }
 
 func NewCachedClient(client *PyPIClient, resCache *ResolutionCache) *CachedClient {
 	return &CachedClient{client: client, resCache: resCache}
+}
+
+// Wait blocks until all background cache update goroutines complete.
+// Call before Flush() to ensure all in-memory updates are visible.
+func (c *CachedClient) Wait() {
+	c.wg.Wait()
 }
 
 // FreshPackageInfo bypasses the resolution cache and fetches full PackageInfo
@@ -58,7 +65,11 @@ func (c *CachedClient) GetPackageInfo(name string) (*PackageInfo, error) {
 
 	// Update resolution cache with version list (in-memory only; flushed later).
 	if c.resCache != nil {
-		go c.updateResolutionCache(info)
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			c.updateResolutionCache(info)
+		}()
 	}
 
 	c.packages.Store(normalized, info)
@@ -86,7 +97,11 @@ func (c *CachedClient) GetVersionDetail(name string, ver version.Version) (*Vers
 
 	// Store in resolution cache for next run (in-memory only; flushed later).
 	if c.resCache != nil {
-		go c.storeInResolutionCache(name, detail)
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			c.storeInResolutionCache(name, detail)
+		}()
 	}
 
 	c.details.Store(key, detail)

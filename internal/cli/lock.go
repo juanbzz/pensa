@@ -164,9 +164,10 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		return fmt.Errorf("resolve: %w", err)
 	}
 
-	// Flush resolution cache to disk in a single batch.
+	// Flush resolution cache to disk. Background goroutines may still be
+	// running — Flush writes whatever is in memory at this point. Remaining
+	// updates will land in next run's cache.
 	if err := resCache.Flush(); err != nil {
-		// Cache flush failure is non-fatal — resolution succeeded.
 		newUI(w, false, false).Warning(fmt.Sprintf("flush resolution cache: %s", err))
 	}
 
@@ -444,9 +445,10 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		return fmt.Errorf("resolve: %w", err)
 	}
 
-	// Flush resolution cache to disk in a single batch.
+	// Flush resolution cache to disk. Background goroutines may still be
+	// running — Flush writes whatever is in memory at this point. Remaining
+	// updates will land in next run's cache.
 	if err := resCache.Flush(); err != nil {
-		// Cache flush failure is non-fatal — resolution succeeded.
 		newUI(w, false, false).Warning(fmt.Sprintf("flush resolution cache: %s", err))
 	}
 
