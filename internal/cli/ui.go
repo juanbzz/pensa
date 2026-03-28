@@ -78,7 +78,7 @@ func (u *ui) Info(msg string) {
 	fmt.Fprintf(u.w, "%s\n", msg)
 }
 
-func (u *ui) Infof(format string, args ...interface{}) {
+func (u *ui) Infof(format string, args ...any) {
 	if u.quiet {
 		return
 	}
