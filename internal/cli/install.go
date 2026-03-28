@@ -313,17 +313,6 @@ func wheelMatchesPlatform(filename string) bool {
 	return true // unknown platform tag, don't skip
 }
 
-func isDarwin() bool  { return strings.Contains(strings.ToLower(currentOS()), "darwin") }
-func isLinux() bool   { return strings.Contains(strings.ToLower(currentOS()), "linux") }
-func isWindows() bool { return strings.Contains(strings.ToLower(currentOS()), "windows") }
-
-func currentOS() string {
-	// Use runtime.GOOS at the call site for testability.
-	return currentOSValue
-}
-
-// Set at init time from runtime.GOOS.
-var currentOSValue = func() string {
-	// Deferred import to keep the import block clean.
-	return goRuntime.GOOS
-}()
+func isDarwin() bool  { return goRuntime.GOOS == "darwin" }
+func isLinux() bool   { return goRuntime.GOOS == "linux" }
+func isWindows() bool { return goRuntime.GOOS == "windows" }
