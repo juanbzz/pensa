@@ -36,7 +36,7 @@ func (t Term) Satisfies(other Term) bool {
 // Relation returns how this term relates to other.
 func (t Term) Relation(other Term) SetRelation {
 	if t.Pkg != other.Pkg {
-		panic(fmt.Sprintf("relation: packages differ: %s vs %s", t.Pkg, other.Pkg))
+		panic(fmt.Sprintf("BUG: term.Relation called with different packages: %q vs %q", t.Pkg, other.Pkg))
 	}
 
 	if other.Positive {
