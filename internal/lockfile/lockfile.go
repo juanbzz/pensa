@@ -224,8 +224,9 @@ func buildLockedPackage(client *index.PyPIClient, name string, ver version.Versi
 	for _, dep := range detail.Dependencies {
 		if dep.Markers != nil {
 			markerStr := dep.Markers.String()
+			// NOTE: fragile text search on rendered marker string.
+			// Ideally we'd walk the marker AST for an "extra" node.
 			if strings.Contains(markerStr, "extra ==") {
-				// Extract extra name and categorize.
 				extraName := extractExtraName(markerStr)
 				if extraName != "" {
 					constraint := "*"

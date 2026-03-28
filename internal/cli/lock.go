@@ -305,6 +305,9 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 	return deps, nil
 }
 
+// isExtrasOnly checks if a dependency is gated by an extras marker.
+// NOTE: fragile text search on rendered marker string.
+// Ideally we'd walk the marker AST for an "extra" node.
 func isExtrasOnly(d pep508.Dependency) bool {
 	if d.Markers == nil {
 		return false
