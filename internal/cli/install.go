@@ -154,6 +154,8 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 		return nil
 	}
 
+	cfg, _ := config.New()
+
 	// Phase 1: Download all wheels in parallel.
 	type downloadResult struct {
 		pkg       lockfile.LockedPackage
@@ -166,7 +168,11 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 	var results []downloadResult
 
 	g := new(errgroup.Group)
-	g.SetLimit(4)
+	downloadLimit := 50
+	if cfg != nil && cfg.ConcurrentDownloads > 0 {
+		downloadLimit = cfg.ConcurrentDownloads
+	}
+	g.SetLimit(downloadLimit)
 
 	for _, pkg := range toInstall {
 		pkg := pkg
@@ -189,7 +195,6 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 	stop()
 
 	// Phase 2: Install sequentially from cache.
-	cfg, _ := config.New()
 	verbose := cfg != nil && cfg.Verbose
 	out := newUI(w, verbose, cfg != nil && cfg.Quiet)
 

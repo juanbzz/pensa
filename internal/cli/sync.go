@@ -154,7 +154,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 		var results []downloadResult
 
 		g := new(errgroup.Group)
-		g.SetLimit(4)
+		downloadLimit := 50
+		if cfg != nil && cfg.ConcurrentDownloads > 0 {
+			downloadLimit = cfg.ConcurrentDownloads
+		}
+		g.SetLimit(downloadLimit)
 
 		for _, pkg := range toInstall {
 			pkg := pkg
