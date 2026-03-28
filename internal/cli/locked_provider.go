@@ -66,15 +66,19 @@ func (p *lockedProvider) Versions(pkg string) ([]version.Version, error) {
 		return versions, nil
 	}
 
+	// Copy before mutating — don't modify the caller's slice.
+	result := make([]version.Version, len(versions))
+	copy(result, versions)
+
 	// Move pinned version to front so solver picks it first.
-	for i, v := range versions {
+	for i, v := range result {
 		if version.Compare(v, pin) == 0 {
-			versions[0], versions[i] = versions[i], versions[0]
+			result[0], result[i] = result[i], result[0]
 			break
 		}
 	}
 
-	return versions, nil
+	return result, nil
 }
 
 func (p *lockedProvider) Dependencies(pkg string, ver version.Version) ([]resolve.Dependency, error) {
