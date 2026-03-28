@@ -228,7 +228,6 @@ func findPEP508Operator(s string) int {
 	return -1
 }
 
-// getLatestVersion queries PyPI for the latest stable version of a package.
 // getLatestCompatibleVersion returns the latest stable version that's compatible
 // with the project's requires-python. Falls back to latest stable if no filter.
 func getLatestCompatibleVersion(client *index.PyPIClient, name string, requiresPython version.Constraint) (version.Version, error) {
@@ -270,30 +269,6 @@ func getLatestCompatibleVersion(client *index.PyPIClient, name string, requiresP
 	return versions[0], nil
 }
 
-func getLatestVersion(client *index.PyPIClient, name string) (version.Version, error) {
-	info, err := client.GetPackageInfo(name)
-	if err != nil {
-		return version.Version{}, err
-	}
-	versions := info.Versions()
-	if len(versions) == 0 {
-		return version.Version{}, fmt.Errorf("no versions found for %s", name)
-	}
-
-	// Sort newest first.
-	sort.Slice(versions, func(i, j int) bool {
-		return version.Compare(versions[i], versions[j]) > 0
-	})
-
-	// Pick the latest stable version.
-	for _, v := range versions {
-		if v.IsStable() {
-			return v, nil
-		}
-	}
-	// Fall back to latest (even if pre-release).
-	return versions[0], nil
-}
 
 func lockedVersion(lf *lockfile.LockFile, name string) string {
 	if lf == nil {
