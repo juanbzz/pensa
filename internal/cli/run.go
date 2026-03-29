@@ -12,19 +12,30 @@ import (
 )
 
 func newRunCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:                "run [command] [args...]",
-		Short:              "Run a command inside the project's virtualenv",
-		Long:               "Syncs the virtualenv, then executes the given command with the venv's Python and PATH.\nUse --no-sync to skip the sync step.",
-		Args:               cobra.MinimumNArgs(1),
-		DisableFlagParsing: true,
-		RunE:               runRun,
+	cmd := &cobra.Command{
+		Use:   "run [flags] [--] command [args...]",
+		Short: "Run a command inside the project's virtualenv",
+		Long: `Syncs the virtualenv, then executes the given command with the venv's Python and PATH.
+
+Use -- to separate pensa flags from the command and its arguments:
+  pensa run --no-sync -- python script.py
+  pensa run --package backend -- uvicorn --reload
+
+Without flags, -- is not needed:
+  pensa run python script.py`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: runRun,
 	}
+	cmd.Flags().Bool("no-sync", false, "Skip venv sync before running")
+	cmd.Flags().String("package", "", "Target workspace member (accepted for uv compat)")
+	cmd.Flags().SetInterspersed(false) // stop parsing flags after first positional arg
+	return cmd
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
-	// Parse --no-sync manually (DisableFlagParsing prevents Cobra from doing it).
-	noSync, args := extractFlag(args, "--no-sync")
+	noSync, _ := cmd.Flags().GetBool("no-sync")
+	// --package is accepted for uv Taskfile compat but not used —
+	// the venv is shared across workspace members.
 
 	if len(args) == 0 {
 		return fmt.Errorf("no command specified")
@@ -87,18 +98,4 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-// extractFlag removes a flag from args and returns whether it was present.
-// Stops scanning at "--" separator.
-func extractFlag(args []string, flag string) (bool, []string) {
-	for i, a := range args {
-		if a == flag {
-			return true, append(args[:i], args[i+1:]...)
-		}
-		if a == "--" {
-			break
-		}
-	}
-	return false, args
 }

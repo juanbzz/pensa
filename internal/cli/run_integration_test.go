@@ -93,27 +93,28 @@ func TestRun_NoSync_WithoutVenv_Errors(t *testing.T) {
 	cmd := newRootCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
-	cmd.SetArgs([]string{"run", "--no-sync", "python", "-c", "print('hi')"})
+	cmd.SetArgs([]string{"run", "--no-sync", "--", "python", "-c", "print('hi')"})
 
 	err := cmd.Execute()
 	assert.True(err != nil)
 	assert.True(strings.Contains(err.Error(), "no virtualenv found"))
 }
 
-func TestExtractFlag(t *testing.T) {
+func TestRun_WithPackageFlag(t *testing.T) {
 	assert := is.New(t)
+	dir := setupRunProject(t)
+	chdir(t, dir)
 
-	found, rest := extractFlag([]string{"--no-sync", "python", "-c", "hi"}, "--no-sync")
-	assert.True(found)
-	assert.Equal(len(rest), 3)
-	assert.Equal(rest[0], "python")
+	// Lock first.
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"lock"})
+	assert.NoErr(cmd.Execute())
 
-	found, rest = extractFlag([]string{"python", "-c", "hi"}, "--no-sync")
-	assert.True(!found)
-	assert.Equal(len(rest), 3)
-
-	// Stop at -- separator.
-	found, rest = extractFlag([]string{"--", "--no-sync", "cmd"}, "--no-sync")
-	assert.True(!found)
-	assert.Equal(len(rest), 3)
+	// --package is accepted and consumed (uv compat), command executes.
+	cmd = newRootCmd()
+	cmd.SetArgs([]string{"run", "--package", "run-test", "--", "python", "-c", "import six; print(six.__version__)"})
+	err := cmd.Execute()
+	assert.NoErr(err)
 }
