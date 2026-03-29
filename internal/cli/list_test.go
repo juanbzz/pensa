@@ -6,10 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/matryer/is"
+
 	"github.com/juanbzz/pensa/internal/lockfile"
 )
 
 func TestList_AllPackages(t *testing.T) {
+	assert := is.New(t)
 	setupTestDir(t, testLockFile())
 
 	cmd := newRootCmd()
@@ -17,27 +20,22 @@ func TestList_AllPackages(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"list"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	out := buf.String()
 
 	for _, pkg := range []string{"certifi", "charset-normalizer", "idna", "requests", "urllib3"} {
-		if !strings.Contains(out, pkg) {
-			t.Errorf("output missing package %q", pkg)
-		}
+		assert.True(strings.Contains(out, pkg)) // output should contain package
 	}
 
 	// Should be alphabetically sorted.
 	certIdx := strings.Index(out, "certifi")
 	reqIdx := strings.Index(out, "requests")
-	if certIdx > reqIdx {
-		t.Error("packages not sorted alphabetically")
-	}
+	assert.True(certIdx < reqIdx) // packages should be sorted alphabetically
 }
 
 func TestList_TopLevel(t *testing.T) {
+	assert := is.New(t)
 	dir := setupTestDir(t, testLockFile())
 	writePyprojectWithDeps(t, dir, `requests = "^2.31"`)
 
@@ -46,21 +44,16 @@ func TestList_TopLevel(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"list", "--top-level"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	out := buf.String()
 
-	if !strings.Contains(out, "requests") {
-		t.Error("top-level should include requests")
-	}
-	if strings.Contains(out, "certifi") {
-		t.Error("top-level should not include transitive dep certifi")
-	}
+	assert.True(strings.Contains(out, "requests"))    // top-level should include requests
+	assert.True(!strings.Contains(out, "certifi"))     // top-level should not include transitive dep certifi
 }
 
 func TestList_Empty(t *testing.T) {
+	assert := is.New(t)
 	lf := &lockfile.LockFile{
 		Metadata: lockfile.LockMetadata{
 			LockVersion:    "2.1",
@@ -75,17 +68,14 @@ func TestList_Empty(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"list"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	out := buf.String()
-	if !strings.Contains(out, "No packages found") {
-		t.Errorf("expected 'No packages found', got: %s", out)
-	}
+	assert.True(strings.Contains(out, "No packages found"))
 }
 
 func TestList_NoLockFile(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
 	t.Cleanup(func() { os.Chdir(orig) })
@@ -97,7 +87,5 @@ func TestList_NoLockFile(t *testing.T) {
 	cmd.SetArgs([]string{"list"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when no poetry.lock")
-	}
+	assert.True(err != nil) // expected error when no poetry.lock
 }

@@ -5,9 +5,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/matryer/is"
 )
 
 func TestShow_PackageDetail(t *testing.T) {
+	assert := is.New(t)
 	setupTestDir(t, testLockFile())
 
 	cmd := newRootCmd()
@@ -15,33 +18,20 @@ func TestShow_PackageDetail(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"show", "requests"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	out := buf.String()
 
-	if !strings.Contains(out, "requests") {
-		t.Error("missing package name")
-	}
-	if !strings.Contains(out, "2.31.0") {
-		t.Error("missing version")
-	}
-	if !strings.Contains(out, "Requires:") {
-		t.Error("missing Requires line")
-	}
-	if !strings.Contains(out, "certifi") {
-		t.Error("missing dependency certifi")
-	}
-	if !strings.Contains(out, "urllib3") {
-		t.Error("missing dependency urllib3")
-	}
-	if !strings.Contains(out, "Required-by:") {
-		t.Error("missing Required-by line")
-	}
+	assert.True(strings.Contains(out, "requests"))   // package name
+	assert.True(strings.Contains(out, "2.31.0"))      // version
+	assert.True(strings.Contains(out, "Requires:"))   // Requires line
+	assert.True(strings.Contains(out, "certifi"))      // dependency certifi
+	assert.True(strings.Contains(out, "urllib3"))       // dependency urllib3
+	assert.True(strings.Contains(out, "Required-by:")) // Required-by line
 }
 
 func TestShow_PackageNotFound(t *testing.T) {
+	assert := is.New(t)
 	setupTestDir(t, testLockFile())
 
 	cmd := newRootCmd()
@@ -50,15 +40,12 @@ func TestShow_PackageNotFound(t *testing.T) {
 	cmd.SetArgs([]string{"show", "nonexistent"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for nonexistent package")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error should mention 'not found', got: %s", err.Error())
-	}
+	assert.True(err != nil) // expected error for nonexistent package
+	assert.True(strings.Contains(err.Error(), "not found"))
 }
 
 func TestShow_NoArgs(t *testing.T) {
+	assert := is.New(t)
 	setupTestDir(t, testLockFile())
 
 	cmd := newRootCmd()
@@ -68,12 +55,11 @@ func TestShow_NoArgs(t *testing.T) {
 	cmd.SetArgs([]string{"show"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when no package arg given")
-	}
+	assert.True(err != nil) // expected error when no package arg given
 }
 
 func TestShow_NoLockFile(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
 	t.Cleanup(func() { os.Chdir(orig) })
@@ -85,7 +71,5 @@ func TestShow_NoLockFile(t *testing.T) {
 	cmd.SetArgs([]string{"show", "requests"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when no poetry.lock")
-	}
+	assert.True(err != nil) // expected error when no poetry.lock
 }

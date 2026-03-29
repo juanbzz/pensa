@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/matryer/is"
+
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
 )
@@ -43,6 +45,7 @@ requests = "^2.31"
 }
 
 func TestCheck_Passes(t *testing.T) {
+	assert := is.New(t)
 	setupCheckTest(t)
 
 	cmd := newRootCmd()
@@ -50,16 +53,12 @@ func TestCheck_Passes(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"check"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("expected check to pass, got: %v", err)
-	}
-
-	if !strings.Contains(buf.String(), "All checks passed") {
-		t.Errorf("expected 'All checks passed', got: %s", buf.String())
-	}
+	assert.NoErr(cmd.Execute())
+	assert.True(strings.Contains(buf.String(), "All checks passed"))
 }
 
 func TestCheck_NoLockFile(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
 	t.Cleanup(func() { os.Chdir(orig) })
@@ -75,12 +74,11 @@ version = "0.1.0"
 	cmd.SetArgs([]string{"check"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when no poetry.lock")
-	}
+	assert.True(err != nil) // expected error when no poetry.lock
 }
 
 func TestCheck_NoPyproject(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
 	t.Cleanup(func() { os.Chdir(orig) })
@@ -90,12 +88,11 @@ func TestCheck_NoPyproject(t *testing.T) {
 	cmd.SetArgs([]string{"check"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when no pyproject.toml")
-	}
+	assert.True(err != nil) // expected error when no pyproject.toml
 }
 
 func TestCheck_HashMismatch(t *testing.T) {
+	assert := is.New(t)
 	dir := setupCheckTest(t)
 
 	// Modify pyproject.toml to change a dependency (triggers hash mismatch).
@@ -116,17 +113,14 @@ requests = "^3.0"
 	cmd.SetArgs([]string{"check"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected check to fail on hash mismatch")
-	}
+	assert.True(err != nil) // expected check to fail on hash mismatch
 
 	out := buf.String()
-	if !strings.Contains(out, "content hash mismatch") {
-		t.Errorf("expected hash mismatch message, got: %s", out)
-	}
+	assert.True(strings.Contains(out, "content hash mismatch"))
 }
 
 func TestCheck_MissingDep(t *testing.T) {
+	assert := is.New(t)
 	dir := setupCheckTest(t)
 
 	// Add flask to pyproject.toml (not in lock file).
@@ -155,17 +149,14 @@ flask = "^3.0"
 	cmd.SetArgs([]string{"check"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected check to fail on missing dep")
-	}
+	assert.True(err != nil) // expected check to fail on missing dep
 
 	out := buf.String()
-	if !strings.Contains(out, "flask") {
-		t.Errorf("expected missing flask message, got: %s", out)
-	}
+	assert.True(strings.Contains(out, "flask"))
 }
 
 func TestCheck_MultipleIssues(t *testing.T) {
+	assert := is.New(t)
 	dir := setupCheckTest(t)
 
 	// Change pyproject to have different hash AND a missing dep.
@@ -186,18 +177,10 @@ flask = "^3.0"
 	cmd.SetArgs([]string{"check"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected check to fail")
-	}
+	assert.True(err != nil) // expected check to fail
 
 	out := buf.String()
-	if !strings.Contains(out, "content hash mismatch") {
-		t.Error("should report hash mismatch")
-	}
-	if !strings.Contains(out, "flask") {
-		t.Error("should report missing flask")
-	}
-	if !strings.Contains(err.Error(), "2 issues") {
-		t.Errorf("should report 2 issues, got: %s", err.Error())
-	}
+	assert.True(strings.Contains(out, "content hash mismatch"))
+	assert.True(strings.Contains(out, "flask"))
+	assert.True(strings.Contains(err.Error(), "2 issues"))
 }

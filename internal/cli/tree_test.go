@@ -5,9 +5,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/matryer/is"
 )
 
 func TestTree_AllPackages(t *testing.T) {
+	assert := is.New(t)
 	setupTestDir(t, testLockFile())
 
 	cmd := newRootCmd()
@@ -15,21 +18,16 @@ func TestTree_AllPackages(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"tree"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	out := buf.String()
 
-	if !strings.Contains(out, "├──") && !strings.Contains(out, "└──") {
-		t.Error("tree output missing box-drawing characters")
-	}
-	if !strings.Contains(out, "requests 2.31.0") {
-		t.Error("missing requests in tree")
-	}
+	assert.True(strings.Contains(out, "├──") || strings.Contains(out, "└──")) // tree output should have box-drawing characters
+	assert.True(strings.Contains(out, "requests 2.31.0"))
 }
 
 func TestTree_SinglePackage(t *testing.T) {
+	assert := is.New(t)
 	setupTestDir(t, testLockFile())
 
 	cmd := newRootCmd()
@@ -37,28 +35,21 @@ func TestTree_SinglePackage(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"tree", "requests"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	out := buf.String()
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 
 	// First line should be the root package.
-	if !strings.HasPrefix(lines[0], "requests 2.31.0") {
-		t.Errorf("first line should be requests root, got: %s", lines[0])
-	}
+	assert.True(strings.HasPrefix(lines[0], "requests 2.31.0"))
 
 	// Should show deps as children.
-	if !strings.Contains(out, "certifi") {
-		t.Error("missing dep certifi in tree")
-	}
-	if !strings.Contains(out, "urllib3") {
-		t.Error("missing dep urllib3 in tree")
-	}
+	assert.True(strings.Contains(out, "certifi"))
+	assert.True(strings.Contains(out, "urllib3"))
 }
 
 func TestTree_PackageNotFound(t *testing.T) {
+	assert := is.New(t)
 	setupTestDir(t, testLockFile())
 
 	cmd := newRootCmd()
@@ -67,15 +58,12 @@ func TestTree_PackageNotFound(t *testing.T) {
 	cmd.SetArgs([]string{"tree", "nonexistent"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for nonexistent package")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("error should mention 'not found', got: %s", err.Error())
-	}
+	assert.True(err != nil) // expected error for nonexistent package
+	assert.True(strings.Contains(err.Error(), "not found"))
 }
 
 func TestTree_TopLevel(t *testing.T) {
+	assert := is.New(t)
 	dir := setupTestDir(t, testLockFile())
 	writePyprojectWithDeps(t, dir, `requests = "^2.31"`)
 
@@ -84,27 +72,22 @@ func TestTree_TopLevel(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"tree", "--top-level"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	out := buf.String()
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 
 	// Only requests should be a root (first line without prefix).
-	if !strings.HasPrefix(lines[0], "requests") {
-		t.Errorf("first root should be requests, got: %s", lines[0])
-	}
+	assert.True(strings.HasPrefix(lines[0], "requests"))
 
 	// certifi should appear as a child (indented), not as a root.
 	for _, line := range lines {
-		if strings.HasPrefix(line, "certifi") {
-			t.Error("certifi should not be a root in top-level tree")
-		}
+		assert.True(!strings.HasPrefix(line, "certifi")) // certifi should not be a root in top-level tree
 	}
 }
 
 func TestTree_NoLockFile(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
 	t.Cleanup(func() { os.Chdir(orig) })
@@ -116,7 +99,5 @@ func TestTree_NoLockFile(t *testing.T) {
 	cmd.SetArgs([]string{"tree"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when no poetry.lock")
-	}
+	assert.True(err != nil) // expected error when no poetry.lock
 }

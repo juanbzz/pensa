@@ -3,10 +3,13 @@ package cli
 import (
 	"testing"
 
+	"github.com/matryer/is"
+
 	"github.com/juanbzz/pensa/internal/pyproject"
 )
 
 func TestRemoveFromProject_PEP621(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{
 		Project: &pyproject.ProjectTable{
 			Name:         "test",
@@ -14,19 +17,13 @@ func TestRemoveFromProject_PEP621(t *testing.T) {
 		},
 	}
 
-	if err := removeFromProject(proj, "requests"); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(proj.Project.Dependencies) != 1 {
-		t.Fatalf("deps count = %d, want 1", len(proj.Project.Dependencies))
-	}
-	if proj.Project.Dependencies[0] != "flask>=2.0" {
-		t.Errorf("remaining dep = %q, want flask>=2.0", proj.Project.Dependencies[0])
-	}
+	assert.NoErr(removeFromProject(proj, "requests"))
+	assert.Equal(len(proj.Project.Dependencies), 1)
+	assert.Equal(proj.Project.Dependencies[0], "flask>=2.0")
 }
 
 func TestRemoveFromProject_Poetry(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{
 		Tool: &pyproject.ToolTable{
 			Poetry: &pyproject.PoetryTable{
@@ -40,22 +37,18 @@ func TestRemoveFromProject_Poetry(t *testing.T) {
 		},
 	}
 
-	if err := removeFromProject(proj, "requests"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(removeFromProject(proj, "requests"))
 
-	if _, ok := proj.Tool.Poetry.Dependencies["requests"]; ok {
-		t.Error("requests should have been removed")
-	}
-	if _, ok := proj.Tool.Poetry.Dependencies["flask"]; !ok {
-		t.Error("flask should still be present")
-	}
-	if _, ok := proj.Tool.Poetry.Dependencies["python"]; !ok {
-		t.Error("python should still be present")
-	}
+	_, ok := proj.Tool.Poetry.Dependencies["requests"]
+	assert.True(!ok) // requests should have been removed
+	_, ok = proj.Tool.Poetry.Dependencies["flask"]
+	assert.True(ok) // flask should still be present
+	_, ok = proj.Tool.Poetry.Dependencies["python"]
+	assert.True(ok) // python should still be present
 }
 
 func TestRemoveFromProject_NotFound(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{
 		Project: &pyproject.ProjectTable{
 			Name:         "test",
@@ -64,12 +57,11 @@ func TestRemoveFromProject_NotFound(t *testing.T) {
 	}
 
 	err := removeFromProject(proj, "requests")
-	if err == nil {
-		t.Fatal("expected error for nonexistent dep")
-	}
+	assert.True(err != nil) // expected error for nonexistent dep
 }
 
 func TestRemoveFromProject_NormalizedName(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{
 		Project: &pyproject.ProjectTable{
 			Name:         "test",
@@ -78,16 +70,12 @@ func TestRemoveFromProject_NormalizedName(t *testing.T) {
 	}
 
 	// Remove with underscore — should match hyphenated name.
-	if err := removeFromProject(proj, "charset_normalizer"); err != nil {
-		t.Fatalf("should match normalized name: %v", err)
-	}
-
-	if len(proj.Project.Dependencies) != 0 {
-		t.Error("dep should have been removed")
-	}
+	assert.NoErr(removeFromProject(proj, "charset_normalizer"))
+	assert.Equal(len(proj.Project.Dependencies), 0)
 }
 
 func TestRemoveFromProject_CannotRemovePython(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{
 		Tool: &pyproject.ToolTable{
 			Poetry: &pyproject.PoetryTable{
@@ -101,16 +89,13 @@ func TestRemoveFromProject_CannotRemovePython(t *testing.T) {
 	}
 
 	err := removeFromProject(proj, "python")
-	if err == nil {
-		t.Fatal("should not be able to remove python")
-	}
+	assert.True(err != nil) // should not be able to remove python
 }
 
 func TestRemoveFromProject_NoSection(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{}
 
 	err := removeFromProject(proj, "requests")
-	if err == nil {
-		t.Fatal("expected error when no dependency section exists")
-	}
+	assert.True(err != nil) // expected error when no dependency section exists
 }

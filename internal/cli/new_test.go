@@ -6,9 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/matryer/is"
 )
 
 func TestNew_CreatesProject(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 
 	cmd := newRootCmd()
@@ -16,39 +19,29 @@ func TestNew_CreatesProject(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"new", filepath.Join(dir, "myproject")})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	projectDir := filepath.Join(dir, "myproject")
 
 	// Check all files exist.
 	for _, name := range []string{"pyproject.toml", "README.md", "myproject/__init__.py", "myproject/__main__.py", ".gitignore"} {
-		if _, err := os.Stat(filepath.Join(projectDir, name)); err != nil {
-			t.Errorf("missing file: %s", name)
-		}
+		_, err := os.Stat(filepath.Join(projectDir, name))
+		assert.NoErr(err) // file should exist
 	}
 
 	// Check pyproject.toml content.
 	data, _ := os.ReadFile(filepath.Join(projectDir, "pyproject.toml"))
 	content := string(data)
-	if !strings.Contains(content, `name = "myproject"`) {
-		t.Errorf("pyproject.toml missing project name, got:\n%s", content)
-	}
-	if !strings.Contains(content, `version = "0.1.0"`) {
-		t.Error("pyproject.toml missing version")
-	}
-	if !strings.Contains(content, "requires-python") {
-		t.Error("pyproject.toml missing requires-python")
-	}
+	assert.True(strings.Contains(content, `name = "myproject"`))
+	assert.True(strings.Contains(content, `version = "0.1.0"`))
+	assert.True(strings.Contains(content, "requires-python"))
 
 	// Check output.
-	if !strings.Contains(buf.String(), "Created project myproject") {
-		t.Errorf("unexpected output: %s", buf.String())
-	}
+	assert.True(strings.Contains(buf.String(), "Created project myproject"))
 }
 
 func TestNew_CurrentDir(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
 	t.Cleanup(func() { os.Chdir(orig) })
@@ -59,17 +52,15 @@ func TestNew_CurrentDir(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"new"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	// pyproject.toml should exist in current dir.
-	if _, err := os.Stat(filepath.Join(dir, "pyproject.toml")); err != nil {
-		t.Error("pyproject.toml not created in current dir")
-	}
+	_, err := os.Stat(filepath.Join(dir, "pyproject.toml"))
+	assert.NoErr(err)
 }
 
 func TestNew_ExistingPyproject(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
 	t.Cleanup(func() { os.Chdir(orig) })
@@ -82,15 +73,12 @@ func TestNew_ExistingPyproject(t *testing.T) {
 	cmd.SetArgs([]string{"new"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when pyproject.toml exists")
-	}
-	if !strings.Contains(err.Error(), "already exists") {
-		t.Errorf("error should mention 'already exists', got: %s", err.Error())
-	}
+	assert.True(err != nil) // expected error when pyproject.toml exists
+	assert.True(strings.Contains(err.Error(), "already exists"))
 }
 
 func TestNew_NonEmptyDir(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 	targetDir := filepath.Join(dir, "myproject")
 	os.MkdirAll(targetDir, 0755)
@@ -100,15 +88,12 @@ func TestNew_NonEmptyDir(t *testing.T) {
 	cmd.SetArgs([]string{"new", targetDir})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for non-empty dir")
-	}
-	if !strings.Contains(err.Error(), "not empty") {
-		t.Errorf("error should mention 'not empty', got: %s", err.Error())
-	}
+	assert.True(err != nil) // expected error for non-empty dir
+	assert.True(strings.Contains(err.Error(), "not empty"))
 }
 
 func TestNew_EmptyDirSucceeds(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 	targetDir := filepath.Join(dir, "myproject")
 	os.MkdirAll(targetDir, 0755)
@@ -118,16 +103,14 @@ func TestNew_EmptyDirSucceeds(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"new", targetDir})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("should succeed in empty dir: %v", err)
-	}
+	assert.NoErr(cmd.Execute())
 
-	if _, err := os.Stat(filepath.Join(targetDir, "pyproject.toml")); err != nil {
-		t.Error("pyproject.toml not created in empty dir")
-	}
+	_, err := os.Stat(filepath.Join(targetDir, "pyproject.toml"))
+	assert.NoErr(err)
 }
 
 func TestNew_CustomName(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 
 	cmd := newRootCmd()
@@ -135,21 +118,15 @@ func TestNew_CustomName(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"new", filepath.Join(dir, "mydir"), "--name", "custom-project"})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	data, _ := os.ReadFile(filepath.Join(dir, "mydir", "pyproject.toml"))
-	if !strings.Contains(string(data), `name = "custom-project"`) {
-		t.Errorf("pyproject.toml should use custom name, got:\n%s", string(data))
-	}
-
-	if !strings.Contains(buf.String(), "custom-project") {
-		t.Errorf("output should mention custom name: %s", buf.String())
-	}
+	assert.True(strings.Contains(string(data), `name = "custom-project"`))
+	assert.True(strings.Contains(buf.String(), "custom-project"))
 }
 
 func TestNew_PackageContent(t *testing.T) {
+	assert := is.New(t)
 	dir := t.TempDir()
 
 	cmd := newRootCmd()
@@ -157,29 +134,19 @@ func TestNew_PackageContent(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"new", filepath.Join(dir, "myproject")})
 
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	// Check __main__.py has entry point.
 	data, _ := os.ReadFile(filepath.Join(dir, "myproject", "myproject", "__main__.py"))
 	content := string(data)
-	if !strings.Contains(content, "Hello from myproject") {
-		t.Errorf("__main__.py should greet with project name, got:\n%s", content)
-	}
-	if !strings.Contains(content, `if __name__ == "__main__"`) {
-		t.Error("__main__.py missing __main__ guard")
-	}
+	assert.True(strings.Contains(content, "Hello from myproject"))
+	assert.True(strings.Contains(content, `if __name__ == "__main__"`))
 
 	// Check __init__.py exists.
 	initData, _ := os.ReadFile(filepath.Join(dir, "myproject", "myproject", "__init__.py"))
-	if !strings.Contains(string(initData), "myproject") {
-		t.Error("__init__.py should reference project name")
-	}
+	assert.True(strings.Contains(string(initData), "myproject"))
 
 	// Check pyproject.toml has scripts entry.
 	pyData, _ := os.ReadFile(filepath.Join(dir, "myproject", "pyproject.toml"))
-	if !strings.Contains(string(pyData), "[project.scripts]") {
-		t.Error("pyproject.toml should have [project.scripts]")
-	}
+	assert.True(strings.Contains(string(pyData), "[project.scripts]"))
 }

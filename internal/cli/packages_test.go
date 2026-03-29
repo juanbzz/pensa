@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/matryer/is"
+
 	"github.com/juanbzz/pensa/internal/lockfile"
 )
 
@@ -66,27 +68,22 @@ func testLockFile() *lockfile.LockFile {
 // Returns the dir path. Cleanup restores the original directory.
 func setupTestDir(t *testing.T, lf *lockfile.LockFile) string {
 	t.Helper()
+	assert := is.New(t)
 	dir := t.TempDir()
 
 	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(err)
 	t.Cleanup(func() { os.Chdir(orig) })
 
-	if err := lockfile.WriteLockFile(filepath.Join(dir, "poetry.lock"), lf); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(lockfile.WriteLockFile(filepath.Join(dir, "poetry.lock"), lf))
+	assert.NoErr(os.Chdir(dir))
 	return dir
 }
 
 // writePyprojectWithDeps writes a pyproject.toml with the given direct deps.
 func writePyprojectWithDeps(t *testing.T, dir string, deps ...string) {
 	t.Helper()
+	assert := is.New(t)
 	content := `[tool.poetry]
 name = "test-project"
 version = "0.1.0"
@@ -98,7 +95,5 @@ python = "^3.8"
 	for _, d := range deps {
 		content += d + "\n"
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(content), 0644))
 }

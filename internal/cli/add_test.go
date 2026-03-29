@@ -9,84 +9,58 @@ import (
 )
 
 func TestParseAddArg_NameOnly(t *testing.T) {
+	assert := is.New(t)
 	name, constraint, extras, err := parseAddArg("requests")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name != "requests" {
-		t.Errorf("name = %q, want %q", name, "requests")
-	}
-	if constraint != "" {
-		t.Errorf("constraint = %q, want empty", constraint)
-	}
-	if len(extras) != 0 {
-		t.Errorf("extras = %v, want empty", extras)
-	}
+	assert.NoErr(err)
+	assert.Equal(name, "requests")
+	assert.Equal(constraint, "")
+	assert.Equal(len(extras), 0)
 }
 
 func TestParseAddArg_WithConstraint(t *testing.T) {
+	assert := is.New(t)
 	name, constraint, _, err := parseAddArg("requests@^2.28")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name != "requests" {
-		t.Errorf("name = %q", name)
-	}
-	if constraint != "^2.28" {
-		t.Errorf("constraint = %q, want %q", constraint, "^2.28")
-	}
+	assert.NoErr(err)
+	assert.Equal(name, "requests")
+	assert.Equal(constraint, "^2.28")
 }
 
 func TestParseAddArg_WithVersionRange(t *testing.T) {
+	assert := is.New(t)
 	name, constraint, _, err := parseAddArg("flask@>=2.0,<3.0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name != "flask" {
-		t.Errorf("name = %q", name)
-	}
-	if constraint != ">=2.0,<3.0" {
-		t.Errorf("constraint = %q", constraint)
-	}
+	assert.NoErr(err)
+	assert.Equal(name, "flask")
+	assert.Equal(constraint, ">=2.0,<3.0")
 }
 
 func TestParseAddArg_WithExtras(t *testing.T) {
+	assert := is.New(t)
 	name, constraint, extras, err := parseAddArg("requests[security]@^2.28")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name != "requests" {
-		t.Errorf("name = %q", name)
-	}
-	if constraint != "^2.28" {
-		t.Errorf("constraint = %q", constraint)
-	}
-	if len(extras) != 1 || extras[0] != "security" {
-		t.Errorf("extras = %v, want [security]", extras)
-	}
+	assert.NoErr(err)
+	assert.Equal(name, "requests")
+	assert.Equal(constraint, "^2.28")
+	assert.Equal(len(extras), 1)
+	assert.Equal(extras[0], "security")
 }
 
 func TestParseAddArg_MultipleExtras(t *testing.T) {
+	assert := is.New(t)
 	name, _, extras, err := parseAddArg("black[d,jupyter]")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name != "black" {
-		t.Errorf("name = %q", name)
-	}
-	if len(extras) != 2 || extras[0] != "d" || extras[1] != "jupyter" {
-		t.Errorf("extras = %v, want [d jupyter]", extras)
-	}
+	assert.NoErr(err)
+	assert.Equal(name, "black")
+	assert.Equal(len(extras), 2)
+	assert.Equal(extras[0], "d")
+	assert.Equal(extras[1], "jupyter")
 }
 
 func TestParseAddArg_Empty(t *testing.T) {
+	assert := is.New(t)
 	_, _, _, err := parseAddArg("")
-	if err == nil {
-		t.Error("expected error for empty arg")
-	}
+	assert.True(err != nil) // expected error for empty arg
 }
 
 func TestAddToProject_PEP621(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{
 		Project: &pyproject.ProjectTable{
 			Name:         "test",
@@ -96,15 +70,12 @@ func TestAddToProject_PEP621(t *testing.T) {
 
 	addToProject(proj, "requests", "^2.28")
 
-	if len(proj.Project.Dependencies) != 2 {
-		t.Fatalf("deps count = %d, want 2", len(proj.Project.Dependencies))
-	}
-	if proj.Project.Dependencies[1] != "requests>=2.28,<3.0" {
-		t.Errorf("dep = %q", proj.Project.Dependencies[1])
-	}
+	assert.Equal(len(proj.Project.Dependencies), 2)
+	assert.Equal(proj.Project.Dependencies[1], "requests>=2.28,<3.0")
 }
 
 func TestAddToProject_PEP621_UpdateExisting(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{
 		Project: &pyproject.ProjectTable{
 			Name:         "test",
@@ -114,15 +85,12 @@ func TestAddToProject_PEP621_UpdateExisting(t *testing.T) {
 
 	addToProject(proj, "requests", "^2.28")
 
-	if len(proj.Project.Dependencies) != 1 {
-		t.Fatalf("deps count = %d, want 1 (updated in place)", len(proj.Project.Dependencies))
-	}
-	if proj.Project.Dependencies[0] != "requests>=2.28,<3.0" {
-		t.Errorf("dep = %q", proj.Project.Dependencies[0])
-	}
+	assert.Equal(len(proj.Project.Dependencies), 1)
+	assert.Equal(proj.Project.Dependencies[0], "requests>=2.28,<3.0")
 }
 
 func TestAddToProject_Poetry(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{
 		Tool: &pyproject.ToolTable{
 			Poetry: &pyproject.PoetryTable{
@@ -135,25 +103,18 @@ func TestAddToProject_Poetry(t *testing.T) {
 	addToProject(proj, "requests", "^2.28")
 
 	val, ok := proj.Tool.Poetry.Dependencies["requests"]
-	if !ok {
-		t.Fatal("requests not added to poetry dependencies")
-	}
-	if val != "^2.28" {
-		t.Errorf("requests = %v, want %q", val, "^2.28")
-	}
+	assert.True(ok) // requests should be added to poetry dependencies
+	assert.Equal(val, "^2.28")
 }
 
 func TestAddToProject_NoSection(t *testing.T) {
+	assert := is.New(t)
 	proj := &pyproject.PyProject{}
 
 	addToProject(proj, "requests", "^2.28")
 
-	if proj.Project == nil {
-		t.Fatal("expected project section to be created")
-	}
-	if len(proj.Project.Dependencies) != 1 {
-		t.Fatalf("deps count = %d, want 1", len(proj.Project.Dependencies))
-	}
+	assert.True(proj.Project != nil) // expected project section to be created
+	assert.Equal(len(proj.Project.Dependencies), 1)
 }
 
 func TestParseAddArg_PEP508_GreaterEqual(t *testing.T) {
