@@ -6,7 +6,7 @@ when:
 
 steps:
   build:
-    image: hugomods/hugo:exts-0.159.0
+    image: hugomods/hugo:exts
     commands:
       - cd docs
       - hugo mod get -u
