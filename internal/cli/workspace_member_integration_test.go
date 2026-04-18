@@ -645,9 +645,15 @@ func TestWorkspaceMember_InterDeps_InstallWorks(t *testing.T) {
 	err = cmd.Execute()
 	assert.NoErr(err)
 
-	out := buf.String()
-	// Should mention installing both members in editable mode.
-	assert.True(strings.Contains(out, "interdep-api") || strings.Contains(out, "interdep-lib") || strings.Contains(out, "up to date"))
+	// Both members should land editable in the venv's site-packages.
+	// (The old assertion grepped install output for member names, but
+	// non-verbose output doesn't emit them — check the effect, not the log.)
+	siteMatches, _ := filepath.Glob(filepath.Join(dir, ".venv", "lib", "python*", "site-packages"))
+	assert.Equal(len(siteMatches), 1)
+	for _, name := range []string{"interdep_api", "interdep_lib"} {
+		distInfo, _ := filepath.Glob(filepath.Join(siteMatches[0], name+"-*.dist-info"))
+		assert.True(len(distInfo) > 0)
+	}
 }
 
 // setupChainWorkspace creates A → B → C chain:
