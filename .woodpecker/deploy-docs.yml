@@ -1,8 +1,8 @@
 when:
   - event: push
     branch: main
-    path: ["docs/**"]
   - event: manual
+    branch: main
 
 steps:
   build:
