@@ -85,6 +85,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if installed[normalizeName(pkg.Name)] == pkg.Version {
 			continue
 		}
+		// Skip packages incompatible with the current Python/platform (e.g.
+		// pywin32 on non-Windows): no wheel to match, and they'd fail to
+		// download. The lock can legitimately contain them when another
+		// platform resolves them as transitive deps.
+		if !compatibleWithPython(pkg, py) {
+			continue
+		}
 		toInstall = append(toInstall, pkg)
 	}
 
