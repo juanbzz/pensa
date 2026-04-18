@@ -7,19 +7,19 @@ layout: hextra-home
   <span>v0.1.0</span>
 {{< /hextra/hero-badge >}}
 
-<div class="hx-mt-6 hx-mb-6">
+<div class="hx:mt-6 hx:mb-6">
 {{< hextra/hero-headline >}}
-  A fast enough Python package manager,&nbsp;<br class="sm:hx-block hx-hidden" />written in Go.
+  A fast enough Python package manager,&nbsp;<br class="hx:sm:block hx:hidden" />written in Go.
 {{< /hextra/hero-headline >}}
 </div>
 
-<div class="hx-mb-12">
+<div class="hx:mb-12">
 {{< hextra/hero-subtitle >}}
   Single binary. UNIX-style CLI. Independent open source.
 {{< /hextra/hero-subtitle >}}
 </div>
 
-<div class="hx-mb-6">
+<div class="hx:mb-6">
 {{< hextra/hero-button text="Get Started" link="docs/getting-started" >}}
 </div>
 
