@@ -15,8 +15,17 @@ func setupWorkspace(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 
-	// Root pyproject.toml with workspace config.
-	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+	writeFile := func(path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	writeFile(filepath.Join(dir, "pyproject.toml"), `
 [project]
 name = "test-workspace"
 version = "0.1.0"
@@ -28,12 +37,10 @@ members = ["apps/api", "apps/worker"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-`), 0644)
+`)
 
-	// API member.
 	apiDir := filepath.Join(dir, "apps", "api")
-	os.MkdirAll(apiDir, 0755)
-	os.WriteFile(filepath.Join(apiDir, "pyproject.toml"), []byte(`
+	writeFile(filepath.Join(apiDir, "pyproject.toml"), `
 [project]
 name = "test-api"
 version = "0.1.0"
@@ -43,15 +50,11 @@ dependencies = ["six>=1.0"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-`), 0644)
-	// Create package dir so editable install works.
-	os.MkdirAll(filepath.Join(apiDir, "test_api"), 0755)
-	os.WriteFile(filepath.Join(apiDir, "test_api", "__init__.py"), []byte(""), 0644)
+`)
+	writeFile(filepath.Join(apiDir, "test_api", "__init__.py"), "")
 
-	// Worker member.
 	workerDir := filepath.Join(dir, "apps", "worker")
-	os.MkdirAll(workerDir, 0755)
-	os.WriteFile(filepath.Join(workerDir, "pyproject.toml"), []byte(`
+	writeFile(filepath.Join(workerDir, "pyproject.toml"), `
 [project]
 name = "test-worker"
 version = "0.1.0"
@@ -61,9 +64,8 @@ dependencies = ["certifi>=2023.0.0"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-`), 0644)
-	os.MkdirAll(filepath.Join(workerDir, "test_worker"), 0755)
-	os.WriteFile(filepath.Join(workerDir, "test_worker", "__init__.py"), []byte(""), 0644)
+`)
+	writeFile(filepath.Join(workerDir, "test_worker", "__init__.py"), "")
 
 	return dir
 }

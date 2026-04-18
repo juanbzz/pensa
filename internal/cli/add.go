@@ -150,8 +150,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				lockedPkgs[normalizeName(p.Name)] = p
 			}
 			// Only show diff for packages that would actually be installed
-			// (compatible with current Python).
-			py, _ := python.Discover()
+			// (compatible with current Python). Prefer the venv's Python so the
+			// warning matches what `pensa run` will actually execute.
+			venvPath := filepath.Join(lockDir, ".venv")
+			var py *python.PythonInfo
+			if python.VenvExists(venvPath) {
+				py, _ = python.FromVenv(venvPath)
+			}
+			if py == nil {
+				py, _ = python.Discover()
+			}
 			for _, pkg := range addedNames {
 				lp, ok := lockedPkgs[normalizeName(pkg.name)]
 				if !ok {

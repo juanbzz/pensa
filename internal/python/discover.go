@@ -34,7 +34,7 @@ func FromVenv(venvPath string) (*PythonInfo, error) {
 	cfgPath := filepath.Join(venvPath, "pyvenv.cfg")
 	f, err := os.Open(cfgPath)
 	if err != nil {
-		return nil, fmt.Errorf("open pyvenv.cfg: %w", err)
+		return nil, fmt.Errorf("read venv metadata at %s (rebuild with 'rm -rf %s && pensa install'): %w", cfgPath, venvPath, err)
 	}
 	defer f.Close()
 
@@ -51,19 +51,22 @@ func FromVenv(venvPath string) (*PythonInfo, error) {
 			break
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read pyvenv.cfg: %w", err)
+	}
 	if version == "" {
-		return nil, fmt.Errorf("pyvenv.cfg missing version_info")
+		return nil, fmt.Errorf("%s missing version_info (rebuild with 'rm -rf %s && pensa install')", cfgPath, venvPath)
 	}
 
 	parts := strings.SplitN(version, ".", 3)
 	if len(parts) < 2 {
 		return nil, fmt.Errorf("unparseable version_info %q", version)
 	}
-	major, err := strconv.Atoi(parts[0])
+	major, err := strconv.Atoi(strings.TrimSpace(parts[0]))
 	if err != nil {
 		return nil, fmt.Errorf("version_info major: %w", err)
 	}
-	minor, err := strconv.Atoi(parts[1])
+	minor, err := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err != nil {
 		return nil, fmt.Errorf("version_info minor: %w", err)
 	}
