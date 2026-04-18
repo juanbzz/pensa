@@ -7,7 +7,8 @@
 __MACOSX/
 .AppleDouble
 .LSOverride
-Icon[]
+Icon[
+]
 
 # Thumbnails
 ._*
@@ -162,4 +163,5 @@ http-client.private.env.json
 .envrc
 /pensa
 docs/public/
+docs/.hugo_build.lock
 docs/resources/
