@@ -8,7 +8,7 @@ import (
 
 	"github.com/matryer/is"
 
-	"github.com/juanbzz/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/lockfile"
 )
 
 func TestList_AllPackages(t *testing.T) {

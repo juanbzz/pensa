@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/pyproject"
-	"github.com/juanbzz/pensa/internal/python"
+	"pensa.sh/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/python"
 )
 
 // lastLine returns the last non-empty line from a string (for clean error messages).

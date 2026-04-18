@@ -3,16 +3,16 @@ package installer
 import (
 	"crypto/sha256"
 	"fmt"
-	"github.com/juanbzz/pensa/internal/build"
+	"pensa.sh/pensa/internal/build"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/index"
-	"github.com/juanbzz/pensa/internal/lockfile"
-	"github.com/juanbzz/pensa/internal/python"
+	"pensa.sh/pensa/internal/index"
+	"pensa.sh/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/python"
 )
 
 // Installer downloads and installs packages into a venv.

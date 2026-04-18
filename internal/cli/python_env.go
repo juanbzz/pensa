@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/juanbzz/pensa/internal/python"
+	"pensa.sh/pensa/internal/python"
 )
 
 // pickPython returns the Python interpreter to use for venv-level operations.

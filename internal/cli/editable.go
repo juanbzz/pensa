@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/juanbzz/pensa/internal/build"
-	"github.com/juanbzz/pensa/internal/config"
-	"github.com/juanbzz/pensa/internal/installer"
-	"github.com/juanbzz/pensa/internal/pyproject"
-	"github.com/juanbzz/pensa/internal/python"
+	"pensa.sh/pensa/internal/build"
+	"pensa.sh/pensa/internal/config"
+	"pensa.sh/pensa/internal/installer"
+	"pensa.sh/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/python"
 )
 
 // installProject installs the current project in editable mode into the venv.

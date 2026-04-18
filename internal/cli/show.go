@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/python"
-	"github.com/juanbzz/pensa/internal/workspace"
+	"pensa.sh/pensa/internal/python"
+	"pensa.sh/pensa/internal/workspace"
 	"github.com/spf13/cobra"
 )
 

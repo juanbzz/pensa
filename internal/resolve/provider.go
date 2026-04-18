@@ -1,7 +1,7 @@
 package resolve
 
 import (
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/pkg/version"
 )
 
 // Dependency represents a package dependency for the resolver.

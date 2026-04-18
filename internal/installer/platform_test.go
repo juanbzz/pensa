@@ -3,7 +3,7 @@ package installer
 import (
 	"testing"
 
-	"github.com/juanbzz/pensa/internal/python"
+	"pensa.sh/pensa/internal/python"
 )
 
 func testPlatform() *PlatformTags {

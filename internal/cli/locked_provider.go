@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"github.com/juanbzz/pensa/internal/lockfile"
-	"github.com/juanbzz/pensa/internal/resolve"
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/resolve"
+	"pensa.sh/pensa/pkg/version"
 )
 
 // lockOptions controls how resolveAndLock handles existing locked versions.

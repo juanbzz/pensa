@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/juanbzz/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/lockfile"
 	"github.com/spf13/cobra"
 )
 

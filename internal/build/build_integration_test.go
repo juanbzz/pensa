@@ -10,7 +10,7 @@ import (
 
 	"github.com/matryer/is"
 
-	"github.com/juanbzz/pensa/internal/python"
+	"pensa.sh/pensa/internal/python"
 )
 
 func TestBuild_Integration(t *testing.T) {

@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/juanbzz/pensa/internal/workspace"
+	"pensa.sh/pensa/internal/workspace"
 )
 
 // resolveTargetMember determines which workspace member to target.

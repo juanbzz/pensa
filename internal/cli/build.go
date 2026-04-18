@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/juanbzz/pensa/internal/build"
-	"github.com/juanbzz/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/build"
+	"pensa.sh/pensa/internal/pyproject"
 	"github.com/spf13/cobra"
 )
 

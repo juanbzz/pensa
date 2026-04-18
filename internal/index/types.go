@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/juanbzz/pensa/pkg/pep508"
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/pkg/pep508"
+	"pensa.sh/pensa/pkg/version"
 )
 
 // Repository is the interface the resolver uses to fetch package info.

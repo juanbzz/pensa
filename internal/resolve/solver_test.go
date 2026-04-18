@@ -7,7 +7,7 @@ import (
 
 	"github.com/matryer/is"
 
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/pkg/version"
 )
 
 // --- Mock Provider ---

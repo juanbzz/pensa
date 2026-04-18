@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/python"
+	"pensa.sh/pensa/internal/python"
 )
 
 // compatTag represents a single compatible (python, abi, platform) combination.

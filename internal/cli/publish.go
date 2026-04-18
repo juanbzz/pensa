@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/build"
-	"github.com/juanbzz/pensa/internal/publish"
-	"github.com/juanbzz/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/build"
+	"pensa.sh/pensa/internal/publish"
+	"pensa.sh/pensa/internal/pyproject"
 	"github.com/spf13/cobra"
 )
 

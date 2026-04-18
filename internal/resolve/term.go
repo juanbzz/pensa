@@ -3,7 +3,7 @@ package resolve
 import (
 	"fmt"
 
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/pkg/version"
 )
 
 // SetRelation describes the relationship between two sets of versions.

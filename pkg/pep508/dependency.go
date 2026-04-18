@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/pkg/version"
 )
 
 // Dependency represents a parsed PEP 508 dependency specifier.

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/pkg/version"
 )
 
 // propagateResult represents the outcome of propagating an incompatibility.

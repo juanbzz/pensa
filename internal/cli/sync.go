@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/juanbzz/pensa/internal/config"
-	"github.com/juanbzz/pensa/internal/installer"
-	"github.com/juanbzz/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/config"
+	"pensa.sh/pensa/internal/installer"
+	"pensa.sh/pensa/internal/lockfile"
 	"github.com/spf13/cobra"
 )
 

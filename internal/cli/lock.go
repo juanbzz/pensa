@@ -12,14 +12,14 @@ import (
 
 	"github.com/adrg/xdg"
 
-	"github.com/juanbzz/pensa/internal/config"
-	"github.com/juanbzz/pensa/internal/index"
-	"github.com/juanbzz/pensa/internal/lockfile"
-	"github.com/juanbzz/pensa/internal/pyproject"
-	"github.com/juanbzz/pensa/internal/resolve"
-	"github.com/juanbzz/pensa/internal/workspace"
-	"github.com/juanbzz/pensa/pkg/pep508"
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/internal/config"
+	"pensa.sh/pensa/internal/index"
+	"pensa.sh/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/resolve"
+	"pensa.sh/pensa/internal/workspace"
+	"pensa.sh/pensa/pkg/pep508"
+	"pensa.sh/pensa/pkg/version"
 	"github.com/spf13/cobra"
 )
 

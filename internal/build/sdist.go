@@ -2,8 +2,8 @@ package build
 
 import (
 	"fmt"
-	"github.com/juanbzz/pensa/internal/pyproject"
-	"github.com/juanbzz/pensa/internal/python"
+	"pensa.sh/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/python"
 	"os"
 	"path/filepath"
 )

@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/juanbzz/pensa/internal/lockfile"
-	"github.com/juanbzz/pensa/internal/pyproject"
-	"github.com/juanbzz/pensa/internal/workspace"
+	"pensa.sh/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/workspace"
 	"github.com/spf13/cobra"
 )
 

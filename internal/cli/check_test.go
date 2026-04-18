@@ -9,8 +9,8 @@ import (
 
 	"github.com/matryer/is"
 
-	"github.com/juanbzz/pensa/internal/lockfile"
-	"github.com/juanbzz/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/pyproject"
 )
 
 // setupCheckTest creates a temp dir with matching pyproject.toml and poetry.lock.

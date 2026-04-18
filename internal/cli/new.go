@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/python"
+	"pensa.sh/pensa/internal/python"
 	"github.com/spf13/cobra"
 )
 

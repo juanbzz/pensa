@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/pyproject"
 )
 
 // Workspace represents a multi-project workspace.

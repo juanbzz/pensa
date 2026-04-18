@@ -1,8 +1,8 @@
 package lockfile
 
 import (
-	"github.com/juanbzz/pensa/pkg/pep508"
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/pkg/pep508"
+	"pensa.sh/pensa/pkg/version"
 )
 
 // SatisfiesResult describes whether a lock file satisfies a set of requirements.

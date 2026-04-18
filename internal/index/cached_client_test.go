@@ -9,7 +9,7 @@ import (
 
 	"github.com/matryer/is"
 
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/pkg/version"
 )
 
 func TestCachedClient_SkipsPEP658_WhenUnsupported(t *testing.T) {

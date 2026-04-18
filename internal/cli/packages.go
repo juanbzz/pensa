@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/lockfile"
-	"github.com/juanbzz/pensa/internal/pyproject"
-	"github.com/juanbzz/pensa/internal/workspace"
+	"pensa.sh/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/workspace"
 )
 
 // normalizeName lowercases and replaces underscores with hyphens for comparison.

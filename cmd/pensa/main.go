@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/juanbzz/pensa/internal/cli"
+	"pensa.sh/pensa/internal/cli"
 )
 
 func main() {

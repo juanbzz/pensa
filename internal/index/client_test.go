@@ -10,7 +10,7 @@ import (
 	json "github.com/goccy/go-json"
 	"github.com/matryer/is"
 
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/pkg/version"
 )
 
 func TestPyPIClient_GetPackageInfo(t *testing.T) {

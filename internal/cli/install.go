@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanbzz/pensa/internal/config"
-	"github.com/juanbzz/pensa/internal/installer"
-	"github.com/juanbzz/pensa/internal/lockfile"
-	"github.com/juanbzz/pensa/internal/python"
-	"github.com/juanbzz/pensa/internal/workspace"
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/internal/config"
+	"pensa.sh/pensa/internal/installer"
+	"pensa.sh/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/python"
+	"pensa.sh/pensa/internal/workspace"
+	"pensa.sh/pensa/pkg/version"
 	"github.com/spf13/cobra"
 )
 

@@ -5,7 +5,7 @@ import (
 
 	"github.com/matryer/is"
 
-	"github.com/juanbzz/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/pyproject"
 )
 
 func TestRemoveFromProject_PEP621(t *testing.T) {

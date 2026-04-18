@@ -7,13 +7,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/juanbzz/pensa/internal/index"
-	"github.com/juanbzz/pensa/internal/lockfile"
-	"github.com/juanbzz/pensa/internal/pyproject"
-	"github.com/juanbzz/pensa/internal/python"
-	"github.com/juanbzz/pensa/internal/workspace"
-	"github.com/juanbzz/pensa/pkg/pep508"
-	"github.com/juanbzz/pensa/pkg/version"
+	"pensa.sh/pensa/internal/index"
+	"pensa.sh/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/pyproject"
+	"pensa.sh/pensa/internal/python"
+	"pensa.sh/pensa/internal/workspace"
+	"pensa.sh/pensa/pkg/pep508"
+	"pensa.sh/pensa/pkg/version"
 	"github.com/spf13/cobra"
 )
 

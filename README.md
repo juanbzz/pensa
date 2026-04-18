@@ -37,7 +37,7 @@ Homebrew:
 brew install pensa-sh/tap/pensa
 ```
 
-Or download a binary from [GitHub Releases](https://github.com/juanbzz/pensa/releases).
+Or download a binary from [Codeberg Releases](https://codeberg.org/juanbz/pensa/releases).
 
 ## Getting started
 
@@ -56,7 +56,7 @@ For guides, command reference, and configuration details, visit [pensa.sh](https
 
 ## Contributing
 
-Issues and pull requests are welcome at [github.com/juanbzz/pensa](https://github.com/juanbzz/pensa).
+Issues and pull requests are welcome at [codeberg.org/juanbz/pensa](https://codeberg.org/juanbz/pensa).
 
 ## License
 

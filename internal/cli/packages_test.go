@@ -7,7 +7,7 @@ import (
 
 	"github.com/matryer/is"
 
-	"github.com/juanbzz/pensa/internal/lockfile"
+	"pensa.sh/pensa/internal/lockfile"
 )
 
 // testLockFile returns a lock file with requests + its transitive deps.
