@@ -46,7 +46,7 @@ func runLock(cmd *cobra.Command, args []string) error {
 			out.UpToDate("Lock file is up to date.")
 			return nil
 		}
-		return runLockWorkspace(os.Stderr, ws, lockOptions{})
+		return runLockWorkspace(cmd.ErrOrStderr(), ws, lockOptions{})
 	}
 
 	// Single project mode.
@@ -72,7 +72,7 @@ func runLock(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	return resolveAndLock(os.Stderr, proj, pyprojectPath, lockOptions{})
+	return resolveAndLock(cmd.ErrOrStderr(), proj, pyprojectPath, lockOptions{})
 }
 
 // resolveAndLock runs the full resolve → lock pipeline.

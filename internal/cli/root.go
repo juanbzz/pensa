@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"os"
-
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
@@ -116,5 +114,5 @@ func uiFromCmd(cmd *cobra.Command) *ui {
 	}
 	// "auto" is the default — fatih/color handles TTY detection.
 
-	return newUI(os.Stderr, verbose, quiet)
+	return newUI(cmd.ErrOrStderr(), verbose, quiet)
 }
