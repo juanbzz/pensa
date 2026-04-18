@@ -1,0 +1,23 @@
+when:
+  - event: push
+    branch: main
+    path: ["docs/**"]
+
+steps:
+  build:
+    image: hugomods/hugo:exts-0.159.0
+    commands:
+      - cd docs
+      - hugo mod get -u
+      - hugo --minify --gc
+
+  deploy:
+    image: node:20-alpine
+    environment:
+      CLOUDFLARE_API_TOKEN:
+        from_secret: CLOUDFLARE_API_TOKEN
+      CLOUDFLARE_ACCOUNT_ID:
+        from_secret: CLOUDFLARE_ACCOUNT_ID
+    commands:
+      - npm install -g wrangler@latest
+      - wrangler pages deploy docs/public --project-name=pensa --branch=main --commit-dirty=true
