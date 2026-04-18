@@ -42,6 +42,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd := newRootCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"lock"})
 
 	err := cmd.Execute()
@@ -75,7 +76,7 @@ build-backend = "poetry.core.masonry.api"
 
 	// Verify output message.
 	output := buf.String()
-	if !strings.Contains(output, "Resolved 1 packages") {
+	if !strings.Contains(output, "Resolved 1 package") {
 		t.Errorf("unexpected output: %s", output)
 	}
 }
@@ -101,6 +102,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd := newRootCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"lock"})
 
 	err := cmd.Execute()

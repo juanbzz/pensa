@@ -42,6 +42,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd = newRootCmd()
 	buf = new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"remove", "requests"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("pensa remove failed: %v", err)
@@ -102,6 +103,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd = newRootCmd()
 	buf = new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"remove", "certifi"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("pensa remove failed: %v", err)
