@@ -1,5 +1,6 @@
 ---
 title: pensa
+description: A fast enough Python package and project manager, written in Go. Single binary, UNIX-style CLI, independent open source.
 layout: hextra-home
 ---
 

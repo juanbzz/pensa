@@ -6,7 +6,7 @@ when:
 
 steps:
   build:
-    image: hugomods/hugo:exts
+    image: hugomods/hugo:dart-sass-go-git-0.160.1
     commands:
       - cd docs
       - hugo mod get -u
