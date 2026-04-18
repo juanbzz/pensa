@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/matryer/is"
 )
 
 func TestCheckIntegration_PassesAfterLock(t *testing.T) {
@@ -117,6 +119,7 @@ build-backend = "poetry.core.masonry.api"
 // leftover from the Poetry-port origin) since the lock file here is
 // pensa.lock.
 func TestCheckIntegration_WorkspacePassesAfterLock(t *testing.T) {
+	assert := is.New(t)
 	dir := setupWorkspace(t)
 	chdir(t, dir)
 
@@ -124,24 +127,18 @@ func TestCheckIntegration_WorkspacePassesAfterLock(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"lock"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("pensa lock failed: %v", err)
-	}
+	assert.NoErr(cmd.Execute())
 
 	cmd = newRootCmd()
 	buf = new(bytes.Buffer)
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"check"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("pensa check should pass after lock in a workspace:\n%s", buf.String())
-	}
-	if !strings.Contains(buf.String(), "All checks passed") {
-		t.Errorf("expected 'All checks passed', got: %s", buf.String())
-	}
-	if strings.Contains(buf.String(), "poetry.lock") {
-		t.Errorf("error text still says 'poetry.lock' — should reference the actual lock file: %s", buf.String())
-	}
+	assert.NoErr(cmd.Execute()) // check should pass immediately after lock in a workspace
+
+	out := buf.String()
+	assert.True(strings.Contains(out, "All checks passed"))
+	assert.True(!strings.Contains(out, "poetry.lock")) // leftover wording from Poetry-port origin
 }
 
 func TestCheckIntegration_FailsMissingDep(t *testing.T) {

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/matryer/is"
 )
 
 func setupWorkspace(t *testing.T) string {
@@ -196,19 +198,17 @@ func TestWorkspaceIntegration_Install(t *testing.T) {
 //   test by aligning the dirs — the whole point is that pyvenv.cfg is the
 //   source of truth, not host PATH.
 func TestWorkspaceIntegration_InstallHonorsVenvPythonVersion(t *testing.T) {
+	assert := is.New(t)
 	dir := setupWorkspace(t)
 	chdir(t, dir)
 
-	runPensa := func(args ...string) string {
+	runPensa := func(args ...string) {
 		cmd := newRootCmd()
 		buf := new(bytes.Buffer)
 		cmd.SetOut(buf)
 		cmd.SetErr(buf)
 		cmd.SetArgs(args)
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("pensa %s failed: %v\n%s", strings.Join(args, " "), err, buf.String())
-		}
-		return buf.String()
+		assert.NoErr(cmd.Execute())
 	}
 
 	runPensa("lock")
@@ -216,9 +216,7 @@ func TestWorkspaceIntegration_InstallHonorsVenvPythonVersion(t *testing.T) {
 
 	// Find the real site-packages pensa created (matches host Python).
 	hostSiteMatches, _ := filepath.Glob(filepath.Join(dir, ".venv", "lib", "python*", "site-packages"))
-	if len(hostSiteMatches) != 1 {
-		t.Fatalf("expected exactly one site-packages dir after first install, got %v", hostSiteMatches)
-	}
+	assert.Equal(len(hostSiteMatches), 1)
 	hostSite := hostSiteMatches[0]
 	hostLibDir := filepath.Dir(hostSite) // .venv/lib/pythonX.Y
 
@@ -227,22 +225,18 @@ func TestWorkspaceIntegration_InstallHonorsVenvPythonVersion(t *testing.T) {
 	// host has the result on PATH.
 	base := filepath.Base(hostLibDir) // "pythonX.Y"
 	var hostMajor, hostMinor int
-	if _, err := fmt.Sscanf(base, "python%d.%d", &hostMajor, &hostMinor); err != nil {
-		t.Fatalf("parse %s: %v", base, err)
-	}
+	_, err := fmt.Sscanf(base, "python%d.%d", &hostMajor, &hostMinor)
+	assert.NoErr(err)
+
 	fakeMinor := hostMinor + 5
 	fakeDir := filepath.Join(dir, ".venv", "lib", fmt.Sprintf("python%d.%d", hostMajor, fakeMinor))
 	fakeSite := filepath.Join(fakeDir, "site-packages")
-	if err := os.MkdirAll(fakeSite, 0755); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(os.MkdirAll(fakeSite, 0755))
 
 	// Rewrite pyvenv.cfg so the venv "claims" the fake version.
 	cfg := fmt.Sprintf("home = %s\nversion_info = %d.%d.0\n",
 		filepath.Dir(filepath.Join(dir, ".venv", "bin")), hostMajor, fakeMinor)
-	if err := os.WriteFile(filepath.Join(dir, ".venv", "pyvenv.cfg"), []byte(cfg), 0644); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(os.WriteFile(filepath.Join(dir, ".venv", "pyvenv.cfg"), []byte(cfg), 0644))
 
 	// Wipe editables from the host-version site-packages so we can tell where the
 	// next install lands.
@@ -259,11 +253,7 @@ func TestWorkspaceIntegration_InstallHonorsVenvPythonVersion(t *testing.T) {
 
 	for _, name := range []string{"test_api", "test_worker"} {
 		fakeDI, _ := filepath.Glob(filepath.Join(fakeSite, name+"-*.dist-info"))
-		hostDI, _ := filepath.Glob(filepath.Join(hostSite, name+"-*.dist-info"))
-		if len(fakeDI) == 0 {
-			t.Errorf("%s: editable dist-info missing from site-packages dictated by pyvenv.cfg (%s); host-dir holds: %v",
-				name, fakeSite, hostDI)
-		}
+		assert.True(len(fakeDI) > 0) // editable dist-info should land in pyvenv.cfg's site-packages
 	}
 }
 
