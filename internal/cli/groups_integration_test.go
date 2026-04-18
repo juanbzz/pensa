@@ -5,6 +5,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -99,12 +100,15 @@ build-backend = "poetry.core.masonry.api"
 		t.Fatalf("pensa install --no-dev failed: %v", err)
 	}
 
-	out := buf.String()
-	if !strings.Contains(out, "certifi") {
+	// Verify by site-packages contents: certifi in, six out.
+	siteMatches, _ := filepath.Glob(filepath.Join(dir, ".venv", "lib", "python*", "site-packages"))
+	if len(siteMatches) != 1 {
+		t.Fatalf("expected exactly one site-packages dir, got %v", siteMatches)
+	}
+	if m, _ := filepath.Glob(filepath.Join(siteMatches[0], "certifi-*.dist-info")); len(m) == 0 {
 		t.Error("should install certifi (main group)")
 	}
-	// six is in dev group and should not be installed with --no-dev.
-	if strings.Contains(out, "six") {
+	if m, _ := filepath.Glob(filepath.Join(siteMatches[0], "six-*.dist-info")); len(m) > 0 {
 		t.Error("should NOT install six with --no-dev")
 	}
 }

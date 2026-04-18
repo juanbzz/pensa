@@ -88,9 +88,13 @@ build-backend = "hatchling.build"
 		t.Fatalf("pensa install from pensa.lock failed: %v", err)
 	}
 
-	out := buf.String()
-	if !strings.Contains(out, "six") {
-		t.Errorf("should install six: %s", out)
+	// Verify by site-packages contents.
+	siteMatches, _ := filepath.Glob(filepath.Join(dir, ".venv", "lib", "python*", "site-packages"))
+	if len(siteMatches) != 1 {
+		t.Fatalf("expected exactly one site-packages dir, got %v", siteMatches)
+	}
+	if m, _ := filepath.Glob(filepath.Join(siteMatches[0], "six-*.dist-info")); len(m) == 0 {
+		t.Errorf("should install six; install output:\n%s", buf.String())
 	}
 }
 

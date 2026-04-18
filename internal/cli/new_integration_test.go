@@ -94,11 +94,18 @@ func TestNewIntegration_ProjectIsInstallable(t *testing.T) {
 	}
 
 	out := buf.String()
-	// Should show editable install (not a warning).
+	// Should not warn on a properly structured project.
 	if strings.Contains(out, "Warning") {
 		t.Errorf("install should not warn on a properly structured project: %s", out)
 	}
-	if !strings.Contains(out, "editable") {
-		t.Errorf("should show editable install message: %s", out)
+
+	// Effect: the new project should be installed editable — look for the
+	// editable-impl .pth or project dist-info in site-packages.
+	siteMatches, _ := filepath.Glob(filepath.Join(projectDir, ".venv", "lib", "python*", "site-packages"))
+	if len(siteMatches) != 1 {
+		t.Fatalf("expected exactly one site-packages dir, got %v", siteMatches)
+	}
+	if m, _ := filepath.Glob(filepath.Join(siteMatches[0], "mypkg-*.dist-info")); len(m) == 0 {
+		t.Errorf("expected mypkg to be editable-installed; install output:\n%s", out)
 	}
 }

@@ -101,8 +101,8 @@ func TestShowIntegration(t *testing.T) {
 	if !strings.Contains(out, "requests") {
 		t.Error("missing package name")
 	}
-	if !strings.Contains(out, "version") {
-		t.Error("missing version label")
+	if !strings.Contains(out, "Version") {
+		t.Error("missing Version label")
 	}
 	// requests depends on certifi.
 	if !strings.Contains(out, "certifi") {
