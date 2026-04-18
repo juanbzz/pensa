@@ -1,0 +1,8 @@
+{{/*
+  Go vanity import: makes `go install pensa.sh/pensa/...` resolve to the
+  Codeberg repo without exposing the forge in import paths. Go's tooling
+  hits any URL under pensa.sh with ?go-get=1, parses these meta tags, and
+  follows them to the source. See https://go.dev/ref/mod#vcs-find.
+*/}}
+<meta name="go-import" content="pensa.sh/pensa git https://codeberg.org/juanbz/pensa">
+<meta name="go-source" content="pensa.sh/pensa https://codeberg.org/juanbz/pensa https://codeberg.org/juanbz/pensa/src/branch/main{/dir} https://codeberg.org/juanbz/pensa/src/branch/main{/dir}/{file}#L{line}">
