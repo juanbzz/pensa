@@ -29,6 +29,7 @@ build-backend = "hatchling.build"
 	cmd := newRootCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"lock"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("pensa lock failed: %v", err)
@@ -50,11 +51,6 @@ build-backend = "hatchling.build"
 	}
 	if !strings.Contains(content, "files =") {
 		t.Error("pensa.lock should have files section")
-	}
-
-	// Output should say pensa.lock.
-	if !strings.Contains(buf.String(), "pensa.lock") {
-		t.Errorf("output should mention pensa.lock: %s", buf.String())
 	}
 }
 

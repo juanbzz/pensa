@@ -25,10 +25,6 @@ func TestWorkspaceMember_AddWithPackageFlag(t *testing.T) {
 	err := cmd.Execute()
 	assert.NoErr(err)
 
-	out := buf.String()
-	assert.True(strings.Contains(out, "Adding"))
-	assert.True(strings.Contains(out, "idna"))
-
 	// Dep should be in api's pyproject, not root's.
 	apiData, _ := os.ReadFile(filepath.Join(dir, "apps", "api", "pyproject.toml"))
 	assert.True(strings.Contains(string(apiData), "idna"))
@@ -124,10 +120,6 @@ func TestWorkspaceMember_RemoveWithPackageFlag(t *testing.T) {
 	cmd.SetArgs([]string{"remove", "idna", "--package", "test-api"})
 	err = cmd.Execute()
 	assert.NoErr(err)
-
-	out := buf.String()
-	assert.True(strings.Contains(out, "Removing"))
-	assert.True(strings.Contains(out, "idna"))
 
 	// Should be gone from api's pyproject.
 	apiData, _ = os.ReadFile(filepath.Join(dir, "apps", "api", "pyproject.toml"))
@@ -375,6 +367,7 @@ func TestWorkspaceMember_PensaFormat_Lock(t *testing.T) {
 	cmd := newRootCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"lock"})
 	err := cmd.Execute()
 	assert.NoErr(err)

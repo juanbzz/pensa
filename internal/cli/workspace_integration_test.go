@@ -79,6 +79,7 @@ func TestWorkspaceIntegration_Lock(t *testing.T) {
 	cmd := newRootCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"lock"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("pensa lock in workspace failed: %v", err)
@@ -137,6 +138,7 @@ func TestWorkspaceIntegration_Install(t *testing.T) {
 	cmd := newRootCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"lock"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("pensa lock failed: %v", err)
@@ -146,21 +148,27 @@ func TestWorkspaceIntegration_Install(t *testing.T) {
 	cmd = newRootCmd()
 	buf = new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"install", "--no-root"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("pensa install in workspace failed: %v", err)
 	}
 
-	out := buf.String()
-
-	// Should install deps from both members.
-	if !strings.Contains(out, "six") && !strings.Contains(out, "certifi") && !strings.Contains(out, "up to date") {
-		t.Errorf("should install deps from both members: %s", out)
-	}
-
 	// Venv should be at workspace root.
 	if _, err := os.Stat(filepath.Join(dir, ".venv")); err != nil {
 		t.Error(".venv should be at workspace root")
+	}
+
+	// Both members' deps should land in the venv's site-packages.
+	siteMatches, _ := filepath.Glob(filepath.Join(dir, ".venv", "lib", "python*", "site-packages"))
+	if len(siteMatches) != 1 {
+		t.Fatalf("expected exactly one site-packages dir, got %v", siteMatches)
+	}
+	for _, name := range []string{"six", "certifi"} {
+		distInfo, _ := filepath.Glob(filepath.Join(siteMatches[0], name+"-*.dist-info"))
+		if len(distInfo) == 0 {
+			t.Errorf("expected %s to be installed; install output:\n%s", name, buf.String())
+		}
 	}
 }
 

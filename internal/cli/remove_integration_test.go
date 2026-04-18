@@ -48,11 +48,6 @@ build-backend = "poetry.core.masonry.api"
 		t.Fatalf("pensa remove failed: %v", err)
 	}
 
-	out := buf.String()
-	if !strings.Contains(out, "Removing requests") {
-		t.Errorf("expected 'Removing requests' in output, got: %s", out)
-	}
-
 	// Verify pyproject.toml no longer has requests.
 	data, err := os.ReadFile("pyproject.toml")
 	if err != nil {

@@ -192,6 +192,7 @@ build-backend = "poetry.core.masonry.api"
 	cmd := newRootCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"lock"})
 
 	err := cmd.Execute()
@@ -200,8 +201,8 @@ build-backend = "poetry.core.masonry.api"
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "No dependencies to lock") {
-		t.Errorf("expected 'No dependencies' message, got: %s", output)
+	if !strings.Contains(output, "no dependencies to lock") {
+		t.Errorf("expected 'no dependencies to lock' message, got: %s", output)
 	}
 
 	// No pensa.lock should be created.
