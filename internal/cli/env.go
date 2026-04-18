@@ -44,7 +44,7 @@ func runEnv(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(w, "Path:       %s\n", venvPath)
 
-	py, err := python.Discover()
+	py, err := python.FromVenv(venvPath)
 	if err != nil {
 		fmt.Fprintf(w, "Python:     unknown\n")
 		fmt.Fprintf(w, "Executable: unknown\n")
@@ -52,7 +52,7 @@ func runEnv(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(w, "Python:     %s\n", py.Version)
-	fmt.Fprintf(w, "Executable: %s\n", filepath.Join(venvPath, "bin", "python"))
+	fmt.Fprintf(w, "Executable: %s\n", py.Path)
 
 	return nil
 }

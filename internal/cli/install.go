@@ -89,19 +89,13 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 		return nil
 	}
 
-	// Discover Python.
-	py, err := python.Discover()
-	if err != nil {
-		return fmt.Errorf("find Python: %w", err)
-	}
-
-	// Create venv if it doesn't exist (at workspace root or project dir).
+	// Pick Python: prefer the existing venv's pyvenv.cfg (the source of truth
+	// for what `pensa run python` will load from), fall back to host PATH when
+	// we're creating a new venv.
 	venvPath := filepath.Join(rootDir, ".venv")
-	if !python.VenvExists(venvPath) {
-		fmt.Fprintf(w, "%s using Python %s\n", blue("Creating virtualenv"), bold(py.Version))
-		if err := python.CreateVenv(venvPath, py); err != nil {
-			return fmt.Errorf("create venv: %w", err)
-		}
+	py, err := pickPython(w, venvPath)
+	if err != nil {
+		return err
 	}
 
 	// Create installer.

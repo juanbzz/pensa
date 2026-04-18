@@ -108,7 +108,11 @@ func findPackageLocation(name, version string) string {
 	}
 	venvPath := filepath.Join(venvDir, ".venv")
 
-	py, err := python.Discover()
+	// Nothing to show if the venv doesn't exist.
+	if !python.VenvExists(venvPath) {
+		return ""
+	}
+	py, err := python.FromVenv(venvPath)
 	if err != nil {
 		return ""
 	}

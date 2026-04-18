@@ -9,7 +9,6 @@ import (
 	"github.com/juanbzz/pensa/internal/config"
 	"github.com/juanbzz/pensa/internal/installer"
 	"github.com/juanbzz/pensa/internal/lockfile"
-	"github.com/juanbzz/pensa/internal/python"
 	"github.com/spf13/cobra"
 )
 
@@ -62,19 +61,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("read lock file: %w", err)
 	}
 
-	// Discover Python.
-	py, err := python.Discover()
-	if err != nil {
-		return fmt.Errorf("find Python: %w", err)
-	}
-
-	// Create venv if it doesn't exist.
 	venvPath := filepath.Join(dir, ".venv")
-	if !python.VenvExists(venvPath) {
-		fmt.Fprintf(w, "%s using Python %s\n", blue("Creating virtualenv"), bold(py.Version))
-		if err := python.CreateVenv(venvPath, py); err != nil {
-			return fmt.Errorf("create venv: %w", err)
-		}
+	py, err := pickPython(w, venvPath)
+	if err != nil {
+		return err
 	}
 
 	siteDir := py.SitePackagesDir(venvPath)

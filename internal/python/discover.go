@@ -1,7 +1,9 @@
 package python
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -21,6 +23,62 @@ type PythonInfo struct {
 // SitePackagesDir returns the site-packages path for a venv using this Python.
 func (p *PythonInfo) SitePackagesDir(venvPath string) string {
 	return filepath.Join(venvPath, "lib", fmt.Sprintf("python%d.%d", p.Major, p.Minor), "site-packages")
+}
+
+// FromVenv returns PythonInfo for an existing venv by reading its pyvenv.cfg.
+// This is the source of truth for which Python the venv will actually run —
+// host-PATH discovery may point at a different interpreter when the venv was
+// built by uv/pyenv/poetry/etc. Returns an error if pyvenv.cfg is missing or
+// doesn't contain a parseable version_info.
+func FromVenv(venvPath string) (*PythonInfo, error) {
+	cfgPath := filepath.Join(venvPath, "pyvenv.cfg")
+	f, err := os.Open(cfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("open pyvenv.cfg: %w", err)
+	}
+	defer f.Close()
+
+	var version string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(k) == "version_info" {
+			version = strings.TrimSpace(v)
+			break
+		}
+	}
+	if version == "" {
+		return nil, fmt.Errorf("pyvenv.cfg missing version_info")
+	}
+
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("unparseable version_info %q", version)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("version_info major: %w", err)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("version_info minor: %w", err)
+	}
+	patch := 0
+	if len(parts) >= 3 {
+		patch, _ = strconv.Atoi(strings.TrimSpace(parts[2]))
+	}
+
+	return &PythonInfo{
+		Path:    filepath.Join(venvPath, "bin", "python"),
+		Version: fmt.Sprintf("%d.%d.%d", major, minor, patch),
+		Major:   major,
+		Minor:   minor,
+		Patch:   patch,
+	}, nil
 }
 
 // Discover finds a suitable Python 3 interpreter on the system.
