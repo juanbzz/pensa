@@ -38,7 +38,10 @@ func FromVenv(venvPath string) (*PythonInfo, error) {
 	}
 	defer f.Close()
 
-	var version string
+	// Read both `version_info` (uv, Python's stdlib venv) and `version`
+	// (virtualenv, pensa's own CreateVenv). Prefer `version_info` when both
+	// are present — stdlib writes both and they're identical.
+	var version, versionFallback string
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -46,10 +49,15 @@ func FromVenv(venvPath string) (*PythonInfo, error) {
 		if !ok {
 			continue
 		}
-		if strings.TrimSpace(k) == "version_info" {
+		switch strings.TrimSpace(k) {
+		case "version_info":
 			version = strings.TrimSpace(v)
-			break
+		case "version":
+			versionFallback = strings.TrimSpace(v)
 		}
+	}
+	if version == "" {
+		version = versionFallback
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("read pyvenv.cfg: %w", err)

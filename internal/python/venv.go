@@ -37,9 +37,11 @@ func CreateVenv(path string, py *PythonInfo) error {
 		// Not critical, ignore.
 	}
 
-	// Write pyvenv.cfg.
-	cfg := fmt.Sprintf("home = %s\ninclude-system-site-packages = false\nversion = %s\n",
-		filepath.Dir(py.Path), py.Version)
+	// Write pyvenv.cfg. Include both `version` and `version_info` so tools
+	// reading either key (virtualenv uses `version`, uv/stdlib use
+	// `version_info`) can detect the interpreter correctly.
+	cfg := fmt.Sprintf("home = %s\ninclude-system-site-packages = false\nversion = %s\nversion_info = %s\n",
+		filepath.Dir(py.Path), py.Version, py.Version)
 	cfgPath := filepath.Join(path, "pyvenv.cfg")
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0644); err != nil {
 		return fmt.Errorf("write pyvenv.cfg: %w", err)
