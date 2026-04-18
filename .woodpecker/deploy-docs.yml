@@ -2,6 +2,7 @@ when:
   - event: push
     branch: main
     path: ["docs/**"]
+  - event: manual
 
 steps:
   build:
@@ -15,9 +16,9 @@ steps:
     image: node:20-alpine
     environment:
       CLOUDFLARE_API_TOKEN:
-        from_secret: CLOUDFLARE_API_TOKEN
+        from_secret: cloudflare_api_token
       CLOUDFLARE_ACCOUNT_ID:
-        from_secret: CLOUDFLARE_ACCOUNT_ID
+        from_secret: cloudflare_account_id
     commands:
       - npm install -g wrangler@latest
       - wrangler pages deploy docs/public --project-name=pensa --branch=main --commit-dirty=true
