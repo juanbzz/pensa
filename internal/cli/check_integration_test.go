@@ -79,15 +79,19 @@ build-backend = "poetry.core.masonry.api"
 		t.Fatalf("pensa lock failed: %v", err)
 	}
 
-	// Modify pyproject.toml without re-locking.
+	// Modify pyproject.toml's dependencies without re-locking. DependencyHash
+	// intentionally ignores version/description/etc. (see
+	// TestDependencyHash_IgnoresNonDepFields), so only a real dep change
+	// should trip "content hash mismatch".
 	os.WriteFile("pyproject.toml", []byte(`
 [tool.poetry]
 name = "test-project"
-version = "0.2.0"
+version = "0.1.0"
 
 [tool.poetry.dependencies]
 python = "^3.8"
 certifi = ">=2023.0.0"
+idna = ">=3.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -98,10 +102,11 @@ build-backend = "poetry.core.masonry.api"
 	cmd = newRootCmd()
 	buf = new(bytes.Buffer)
 	cmd.SetOut(buf)
+	cmd.SetErr(buf)
 	cmd.SetArgs([]string{"check"})
 	err := cmd.Execute()
 	if err == nil {
-		t.Fatal("pensa check should fail after pyproject change")
+		t.Fatal("pensa check should fail after dep change")
 	}
 
 	if !strings.Contains(buf.String(), "content hash mismatch") {
