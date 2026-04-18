@@ -107,6 +107,43 @@ build-backend = "poetry.core.masonry.api"
 	}
 }
 
+// TestCheckIntegration_WorkspacePassesAfterLock covers a bug where `pensa lock`
+// writes a workspace hash (sha of root + all members' dep hashes) but
+// `pensa check` only hashes the root pyproject. In any workspace the two never
+// agree, so check always reported a bogus "content hash mismatch" even
+// immediately after a successful lock.
+//
+// The test also pins the error wording: it must NOT say "poetry.lock" (a
+// leftover from the Poetry-port origin) since the lock file here is
+// pensa.lock.
+func TestCheckIntegration_WorkspacePassesAfterLock(t *testing.T) {
+	dir := setupWorkspace(t)
+	chdir(t, dir)
+
+	cmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"lock"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("pensa lock failed: %v", err)
+	}
+
+	cmd = newRootCmd()
+	buf = new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"check"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("pensa check should pass after lock in a workspace:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "All checks passed") {
+		t.Errorf("expected 'All checks passed', got: %s", buf.String())
+	}
+	if strings.Contains(buf.String(), "poetry.lock") {
+		t.Errorf("error text still says 'poetry.lock' — should reference the actual lock file: %s", buf.String())
+	}
+}
+
 func TestCheckIntegration_FailsMissingDep(t *testing.T) {
 	dir := t.TempDir()
 	chdir(t, dir)

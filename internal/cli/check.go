@@ -7,6 +7,7 @@ import (
 
 	"github.com/juanbzz/pensa/internal/lockfile"
 	"github.com/juanbzz/pensa/internal/pyproject"
+	"github.com/juanbzz/pensa/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -28,18 +29,21 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	w := cmd.OutOrStdout()
-	pyprojectPath := filepath.Join(dir, "pyproject.toml")
-	// Read pyproject.toml.
-	proj, err := pyproject.ReadPyProject(pyprojectPath)
-	if err != nil {
-		return fmt.Errorf("read pyproject.toml: %w", err)
-	}
 
-	// Read lock file.
-	lockPath, _ := lockfile.DetectLockFile(dir)
+	// Workspace-aware: lock lives at the workspace root when in a workspace,
+	// and its content hash combines the root + every member's dep hash.
+	ws, _ := workspace.Discover(dir)
+	rootDir := dir
+	if ws != nil {
+		rootDir = ws.Root
+	}
+	pyprojectPath := filepath.Join(rootDir, "pyproject.toml")
+
+	lockPath, _ := lockfile.DetectLockFile(rootDir)
 	if lockPath == "" {
 		return fmt.Errorf("no lock file found (run 'pensa lock' first)")
 	}
+	lockName := filepath.Base(lockPath)
 	lf, err := lockfile.ReadLockFile(lockPath)
 	if err != nil {
 		return fmt.Errorf("read lock file: %w", err)
@@ -47,16 +51,32 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 	var issues []string
 
-	// Check content hash.
-	currentHash := computeContentHash(pyprojectPath)
+	// Check content hash. In a workspace this combines the root + all members;
+	// single-project mode just hashes the one pyproject.
+	var currentHash string
+	if ws != nil {
+		currentHash = computeWorkspaceHash(ws)
+	} else {
+		currentHash = computeContentHash(pyprojectPath)
+	}
 	if currentHash != "" && lf.Metadata.ContentHash != "" && currentHash != lf.Metadata.ContentHash {
-		issues = append(issues, "poetry.lock is out of date (content hash mismatch). Run \"pensa lock\" to update.")
+		issues = append(issues, fmt.Sprintf(
+			"%s is out of date (content hash mismatch). Run \"pensa lock\" to update.", lockName))
 	}
 
-	// Check all direct deps (all groups) are present in lock.
-	allDeps, err := proj.ResolveAllDependencies()
-	if err != nil {
-		return fmt.Errorf("resolve dependencies: %w", err)
+	// Check all direct deps (all groups) are present in lock — across every
+	// pyproject that contributes to the lock (root + workspace members).
+	var projects []*pyproject.PyProject
+	if ws != nil {
+		for _, m := range ws.Members {
+			projects = append(projects, m.Project)
+		}
+	} else {
+		proj, err := pyproject.ReadPyProject(pyprojectPath)
+		if err != nil {
+			return fmt.Errorf("read pyproject.toml: %w", err)
+		}
+		projects = append(projects, proj)
 	}
 
 	lockedNames := make(map[string]bool, len(lf.Packages))
@@ -64,9 +84,17 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		lockedNames[normalizeName(p.Name)] = true
 	}
 
-	for _, gd := range allDeps {
-		if !lockedNames[normalizeName(gd.Dep.Name)] {
-			issues = append(issues, fmt.Sprintf("dependency %q (%s group) is in pyproject.toml but missing from poetry.lock.", gd.Dep.Name, gd.Group))
+	for _, proj := range projects {
+		allDeps, err := proj.ResolveAllDependencies()
+		if err != nil {
+			return fmt.Errorf("resolve dependencies: %w", err)
+		}
+		for _, gd := range allDeps {
+			if !lockedNames[normalizeName(gd.Dep.Name)] {
+				issues = append(issues, fmt.Sprintf(
+					"dependency %q (%s group) is in pyproject.toml but missing from %s.",
+					gd.Dep.Name, gd.Group, lockName))
+			}
 		}
 	}
 
