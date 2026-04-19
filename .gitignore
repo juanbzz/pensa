@@ -165,3 +165,8 @@ http-client.private.env.json
 docs/public/
 docs/.hugo_build.lock
 docs/resources/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
