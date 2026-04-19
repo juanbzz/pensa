@@ -392,3 +392,64 @@ func TestSolver_ConflictingTransitiveDepsNoPanic(t *testing.T) {
 		assert.True(strings.Contains(msg, "version solving failed"))
 	}
 }
+
+// TestSolver_ManyVersionsSharedConflict reproduces the 10k-iteration bug
+// observed on py-lifeandhomes-core (goetry-f19).
+//
+// Shape: package "a" has 50 versions, all of which depend on "conflict ^2.0".
+// Package "b" requires "conflict ^1.0", making every version of "a"
+// incompatible with b.
+//
+// A well-behaved solver should learn ONE range-scoped clause ("no a version
+// is compatible") and fail (or succeed by dropping a) in a handful of
+// iterations. A solver with unit-exclusion behavior will learn one
+// per-version clause per iteration and grind through all 50 (or hit the
+// iteration cap if we had more versions).
+func TestSolver_ManyVersionsSharedConflict(t *testing.T) {
+	assert := is.New(t)
+
+	const numVersions = 50
+
+	aPackages := make([]mockPackage, 0, numVersions)
+	for i := 0; i < numVersions; i++ {
+		aPackages = append(aPackages, mockPackage{
+			ver: mustParseVersion(t, fmt.Sprintf("1.%d.0", i)),
+			deps: []Dependency{
+				{Pkg: "conflict", Constraint: mustParseConstraint(t, "^2.0")},
+			},
+		})
+	}
+
+	provider := &mockProvider{
+		packages: map[string][]mockPackage{
+			"a": aPackages,
+			"b": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: []Dependency{
+					{Pkg: "conflict", Constraint: mustParseConstraint(t, "^1.0")},
+				}},
+			},
+			"conflict": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: nil},
+				{ver: mustParseVersion(t, "2.0.0"), deps: nil},
+			},
+		},
+	}
+
+	solver := NewSolver(provider, "myproject", []Dependency{
+		{Pkg: "a", Constraint: mustParseConstraint(t, ">=1.0,<2.0")},
+		{Pkg: "b", Constraint: mustParseConstraint(t, "^1.0")},
+	})
+
+	_, err := solver.Solve()
+	// Unsolvable — every version of a conflicts with b. Guard nil before
+	// calling Error() so a regression returning nil fails with a clear
+	// message instead of a nil-pointer panic.
+	if err == nil {
+		t.Fatal("expected solver error, got nil")
+	}
+
+	// The solver must NOT blow through the iteration cap. If the fix is
+	// in place, conflict resolution generalizes over a's versions and this
+	// fails cleanly. If broken, we hit "exceeded 10000 iterations".
+	assert.True(!strings.Contains(err.Error(), "exceeded 10000 iterations"))
+}

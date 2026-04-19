@@ -596,7 +596,19 @@ func (u *Union) Allows(v Version) bool {
 }
 
 func (u *Union) AllowsAll(other Constraint) bool {
-	// Conservative: true only if one of our constraints allows all.
+	// When `other` is itself a Union, each part must be allowed; otherwise
+	// a Union like [1,3]∪[5,8] would claim not to allow-all of itself
+	// because neither part alone contains the whole. Single intervals can
+	// only fit in one part of a disjoint-range union, so the single-pass
+	// check is exact for them.
+	if otherU, ok := other.(*Union); ok {
+		for _, c := range otherU.constraints {
+			if !u.AllowsAll(c) {
+				return false
+			}
+		}
+		return true
+	}
 	for _, c := range u.constraints {
 		if c.AllowsAll(other) {
 			return true

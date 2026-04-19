@@ -91,6 +91,11 @@ type Solver struct {
 	contradicted      map[*Incompatibility]bool
 	solution          *PartialSolution
 	priorities        map[string]int
+	// batched tracks packages where per-version dep incompatibilities are
+	// insufficient — pensa widens each new dep incompatibility into a range
+	// over adjacent versions with identical deps. Set when a decision on the
+	// package is undone during conflict resolution (goetry-f19).
+	batched map[string]bool
 }
 
 // NewSolver creates a new PubGrub solver.
@@ -103,6 +108,7 @@ func NewSolver(provider Provider, root string, rootDeps []Dependency) *Solver {
 		contradicted:      make(map[*Incompatibility]bool),
 		solution:          NewPartialSolution(),
 		priorities:        make(map[string]int),
+		batched:           make(map[string]bool),
 	}
 }
 
@@ -272,6 +278,13 @@ func (s *Solver) resolveConflict(incompat *Incompatibility) (*Incompatibility, e
 		}
 
 		if previousSatisfierLevel < mostRecentSatisfier.DecisionLevel || mostRecentSatisfier.IsDecision() {
+			// When backtracking past a decision, flag the package for
+			// range-batched dep incompatibilities on its next pick. Prevents
+			// per-version thrashing when many versions share a conflicting dep
+			// (goetry-f19). Root package is never batched.
+			if mostRecentSatisfier.IsDecision() && mostRecentSatisfier.Pkg != rootPkg {
+				s.batched[mostRecentSatisfier.Pkg] = true
+			}
 			s.solution.Backtrack(previousSatisfierLevel)
 			s.contradicted = make(map[*Incompatibility]bool)
 			if newIncompat {
@@ -350,6 +363,11 @@ func (s *Solver) choosePackageVersion() (string, error) {
 	}
 
 	chosenConstraint := version.ExactVersion(*chosen)
+	if s.batched[pkg] {
+		if lo, hi, ok := s.dependencyBounds(pkg, *chosen, deps, versions); ok {
+			chosenConstraint = version.NewRange(&lo, &hi, true, true)
+		}
+	}
 	for _, dep := range deps {
 		s.addIncompatibility(&Incompatibility{
 			Terms: []Term{
@@ -361,8 +379,113 @@ func (s *Solver) choosePackageVersion() (string, error) {
 	}
 
 	s.solution.Decide(pkg, *chosen)
+	delete(s.batched, pkg)
 
 	return pkg, nil
+}
+
+// dependencyBounds walks outward from chosen to find the widest contiguous
+// range of versions whose dependency list matches chosen's. Versions outside
+// the currently-allowed positive term are skipped as range boundaries.
+//
+// `versions` must be the list returned by provider.Versions(pkg), sorted
+// newest-first (which is what choosePackageVersion sorts it into).
+//
+// Returns (lo, hi, true) when a range is found; returns (_, _, false) when
+// the range degenerates to the singleton `chosen`, in which case the caller
+// should fall back to ExactVersion.
+//
+// The caller wraps (lo, hi) as a closed interval — so unenumerated versions
+// in (lo, hi) (e.g. on a custom index with version gaps) would also be
+// excluded. For the PyPI index this is benign because Versions() enumerates
+// completely. A future refinement could emit a Union of seen versions
+// instead of a continuous range to cover non-PyPI providers.
+func (s *Solver) dependencyBounds(pkg string, chosen version.Version, deps []Dependency, versions []version.Version) (version.Version, version.Version, bool) {
+	idx := -1
+	for i := range versions {
+		if version.Compare(versions[i], chosen) == 0 {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return chosen, chosen, false
+	}
+
+	lo, hi := chosen, chosen
+
+	// versions is sorted newest-first, so lower indices are higher versions.
+	// Walk up (toward higher versions).
+	for i := idx - 1; i >= 0; i-- {
+		if !s.canExtendBound(pkg, versions[i], deps) {
+			break
+		}
+		hi = versions[i]
+	}
+	// Walk down (toward lower versions).
+	for i := idx + 1; i < len(versions); i++ {
+		if !s.canExtendBound(pkg, versions[i], deps) {
+			break
+		}
+		lo = versions[i]
+	}
+
+	if version.Compare(lo, hi) == 0 {
+		return lo, hi, false
+	}
+	return lo, hi, true
+}
+
+// canExtendBound checks whether `neighbor` can be merged into the range
+// around a chosen version. Returns false when the neighbor is already
+// disallowed by the current positive term, when fetching its deps errors,
+// or when its deps differ from `deps`.
+//
+// A walk may issue O(N) provider.Dependencies calls per batched pick. On a
+// cold cache this warms the same versions the solver would have fetched
+// anyway during backtrack; the existing CachedClient + resolutionCache
+// layers make warm calls in-memory lookups. Errors are treated as "can't
+// extend" (benign: the range just stops here) — persistent provider errors
+// would surface separately when the solver later decides on the neighbor.
+func (s *Solver) canExtendBound(pkg string, neighbor version.Version, deps []Dependency) bool {
+	rel := s.solution.Relation(Term{Pkg: pkg, Constraint: version.ExactVersion(neighbor), Positive: true})
+	if rel == Disjoint {
+		return false
+	}
+	nDeps, err := s.provider.Dependencies(pkg, neighbor)
+	if err != nil {
+		return false
+	}
+	return depsEqual(deps, nDeps)
+}
+
+// depsEqual compares two dependency lists by (pkg name, rendered
+// constraint string). String comparison is exact for Pensa's constraints:
+// both sides come from the same provider parse path, so equivalent
+// constraints round-trip to the same string. Structural equality would
+// require a deeper Constraint API; the string check is sufficient here.
+func depsEqual(a, b []Dependency) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	byName := make(map[string]string, len(a))
+	for _, d := range a {
+		c := ""
+		if d.Constraint != nil {
+			c = d.Constraint.String()
+		}
+		byName[d.Pkg] = c
+	}
+	for _, d := range b {
+		c := ""
+		if d.Constraint != nil {
+			c = d.Constraint.String()
+		}
+		if byName[d.Pkg] != c {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Solver) positiveTermFor(pkg string) Term {
