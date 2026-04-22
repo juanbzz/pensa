@@ -195,17 +195,26 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 // the current Python interpreter. Skips packages whose python-versions
 // constraint excludes the current Python, or that have wheels but none
 // matching the current CPython version.
+//
+// Upper bounds in the package's python-versions constraint are stripped
+// before checking (goetry-eos.1). Most `python<X.Y` declarations are
+// defensive ("untested on newer") rather than hard incompatibilities;
+// rejecting an install because of one is usually a worse outcome than
+// letting the user run and discover any actual breakage themselves.
 func compatibleWithPython(pkg lockfile.LockedPackage, py *python.PythonInfo) bool {
 	pyVer, err := version.Parse(fmt.Sprintf("%d.%d.%d", py.Major, py.Minor, py.Patch))
 	if err != nil {
 		return true // can't parse, don't skip
 	}
 
-	// Check python-versions constraint.
+	// Check python-versions constraint (lower bound only).
 	if pkg.PythonVersions != "" {
 		constraint, err := version.ParseConstraint(pkg.PythonVersions)
-		if err == nil && !constraint.Allows(pyVer) {
-			return false
+		if err == nil {
+			constraint = version.StripUpperBound(constraint)
+			if !constraint.Allows(pyVer) {
+				return false
+			}
 		}
 	}
 

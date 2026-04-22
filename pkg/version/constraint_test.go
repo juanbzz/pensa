@@ -262,3 +262,39 @@ func TestIsSingleton(t *testing.T) {
 func ptr(v Version) *Version {
 	return &v
 }
+
+func TestStripUpperBound(t *testing.T) {
+	assert := is.New(t)
+
+	mustStrip := func(input string) string {
+		c, err := ParseConstraint(input)
+		if err != nil {
+			t.Fatalf("ParseConstraint(%q): %v", input, err)
+		}
+		return StripUpperBound(c).String()
+	}
+
+	// Range with both bounds → lower bound only.
+	assert.Equal(mustStrip(">=3.8,<4.0"), ">=3.8")
+	assert.Equal(mustStrip(">=3.11,<3.13"), ">=3.11")
+
+	// Exclusive lower bound preserved.
+	assert.Equal(mustStrip(">3.8,<4.0"), ">3.8")
+
+	// Upper-bound-only → any.
+	assert.Equal(mustStrip("<4.0"), "*")
+
+	// No upper bound → unchanged shape.
+	assert.Equal(mustStrip(">=3.8"), ">=3.8")
+
+	// Exact pin is intent-bearing, not defensive; keep as-is.
+	assert.True(IsSingleton(StripUpperBound(ExactVersion(mustParse(t, "3.9")))))
+
+	// AnyConstraint and Empty pass through.
+	assert.True(StripUpperBound(AnyConstraint()).IsAny())
+	assert.True(StripUpperBound(EmptyConstraint()).IsEmpty())
+
+	// Union: take the lowest lower bound across parts.
+	assert.Equal(mustStrip(">=3.8,<3.10 || >=3.11,<3.13"), ">=3.8")
+	assert.Equal(mustStrip(">=3.11,<3.13 || >=3.8,<3.10"), ">=3.8")
+}

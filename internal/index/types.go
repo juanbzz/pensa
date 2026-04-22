@@ -19,6 +19,11 @@ type Repository interface {
 type PackageInfo struct {
 	Name  string
 	Files []FileInfo
+	// requiresPythonByVersion caches a representative requires-python
+	// constraint per version (first file's value, or "" if none). Built
+	// lazily by RequiresPythonFor. Used to filter versions by project's
+	// requires-python without O(files) rescans each call.
+	requiresPythonByVersion map[string]string
 }
 
 // FileInfo represents a single distribution file.
@@ -72,6 +77,34 @@ func (p *PackageInfo) FilesForVersion(ver version.Version) []FileInfo {
 		}
 	}
 	return files
+}
+
+// RequiresPythonFor returns a representative requires-python value for the
+// given version, or empty string if the version has no files declaring one.
+// Result is cached per PackageInfo — the first call builds a version-keyed
+// index; subsequent calls are map lookups. This makes version-filtering in
+// the resolver's hot path O(1) amortized instead of O(files) per call.
+//
+// "Representative" means: the first file's value. In practice all files of a
+// given version carry the same requires-python; on the rare occasions they
+// differ, the divergence is between sdist and wheel metadata, which would
+// be noise for resolver-level filtering.
+func (p *PackageInfo) RequiresPythonFor(ver version.Version) string {
+	if p.requiresPythonByVersion == nil {
+		p.requiresPythonByVersion = make(map[string]string, len(p.Files))
+		for _, f := range p.Files {
+			v, err := VersionFromFilename(f.Filename)
+			if err != nil {
+				continue
+			}
+			key := v.String()
+			if _, ok := p.requiresPythonByVersion[key]; ok {
+				continue
+			}
+			p.requiresPythonByVersion[key] = f.RequiresPython
+		}
+	}
+	return p.requiresPythonByVersion[ver.String()]
 }
 
 // BestWheel returns the best wheel file for a version, preferring

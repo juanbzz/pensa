@@ -30,6 +30,61 @@ func IsSingleton(c Constraint) bool {
 	return ok
 }
 
+// StripUpperBound returns the constraint with its upper bound removed,
+// keeping only the lower bound. For unions, the minimum lower bound across
+// all parts is retained. Exact-version constraints are returned unchanged
+// (an `==X.Y` pin is treated as deliberate intent, not a defensive upper).
+//
+// Rationale: upper bounds on requires-python declarations (and transitive
+// Python markers) are almost always defensive — a package author writing
+// `python<4.0` means "we haven't tested Python 4", not "we know this
+// breaks on Python 4". Treating them as hard constraints causes PubGrub
+// to backtrack through many otherwise-valid configurations. See uv's
+// equivalent (https://nesbitt.io/2025/12/26/how-uv-got-so-fast.html) and
+// goetry-eos.1 for the full rationale.
+func StripUpperBound(c Constraint) Constraint {
+	switch v := c.(type) {
+	case *anyConstraint, *emptyConstraint, *exactConstraint:
+		return c
+	case *Range:
+		if v.min == nil {
+			return AnyConstraint()
+		}
+		return NewRange(v.min, nil, v.includeMin, false)
+	case *Union:
+		// Take the lowest lower-bound across all parts.
+		var lo *Version
+		loIncl := false
+		for _, part := range v.constraints {
+			switch p := part.(type) {
+			case *Range:
+				if p.min == nil {
+					return AnyConstraint()
+				}
+				if lo == nil || Compare(*p.min, *lo) < 0 ||
+					(Compare(*p.min, *lo) == 0 && p.includeMin && !loIncl) {
+					lo = p.min
+					loIncl = p.includeMin
+				}
+			case *exactConstraint:
+				ev := p.version
+				if lo == nil || Compare(ev, *lo) < 0 ||
+					(Compare(ev, *lo) == 0 && !loIncl) {
+					lo = &ev
+					loIncl = true
+				}
+			case *anyConstraint:
+				return AnyConstraint()
+			}
+		}
+		if lo == nil {
+			return AnyConstraint()
+		}
+		return NewRange(lo, nil, loIncl, false)
+	}
+	return c
+}
+
 // --- anyConstraint ---
 
 type anyConstraint struct{}

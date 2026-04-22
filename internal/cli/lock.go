@@ -211,6 +211,11 @@ type indexProvider struct {
 	requestedExtras map[string][]string // normalized pkg name → requested extras
 	prefetchSem     chan struct{}       // bounds background prefetch concurrency
 	requiresPython  version.Constraint  // project's requires-python, nil if unset
+	// rpOverlapCache memoizes pythonRangesOverlap results keyed on the raw
+	// package-level requires-python string. PyPI packages reuse a small set
+	// of distinct values across many (pkg, version) pairs, so the cache hit
+	// rate is high and the per-version filter is close to free.
+	rpOverlapCache sync.Map // string → bool
 }
 
 func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
@@ -219,11 +224,10 @@ func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
 		return nil, err
 	}
 
-	// Note: if info comes from the resolution cache (synthetic), it won't have
-	// RequiresPython data. The requires-python filter only works with real
-	// PackageInfo from PyPI. This is acceptable — the filter catches most cases
-	// on packages fetched fresh (cold cache or first resolve). Cached packages
-	// that were already resolved are likely compatible.
+	// Resolution-cache-backed PackageInfo objects have no file-level data,
+	// so RequiresPython is empty and the filter is a no-op for them. That
+	// matches previous behavior — those versions were already resolved
+	// successfully, so we trust them.
 
 	allVersions := info.Versions()
 	var compatible []version.Version
@@ -231,18 +235,35 @@ func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
 		if !v.IsStable() {
 			continue
 		}
-		// Note: requires-python filtering is NOT done here because
-		// FilesForVersion() is O(files) per version and too expensive
-		// for packages with hundreds of versions. Instead, the install
-		// phase filters incompatible packages via compatibleWithPython().
-		// The getLatestCompatibleVersion() in add.go handles picking
-		// the right version for new deps.
+		// Filter by requires-python at the resolver level. Cheap via
+		// PackageInfo.RequiresPythonFor + rpOverlapCache memoization.
+		// Upper bounds on the package side are stripped because they're
+		// defensive declarations, not hard incompatibilities (goetry-eos.1).
+		if p.requiresPython != nil {
+			rp := info.RequiresPythonFor(v)
+			if rp != "" && !p.requiresPythonAllowsProject(rp) {
+				continue
+			}
+		}
 		compatible = append(compatible, v)
 	}
 	if len(compatible) == 0 {
 		return allVersions, nil
 	}
 	return compatible, nil
+}
+
+// requiresPythonAllowsProject returns whether a package's requires-python
+// (after stripping defensive upper bounds) allows the project's target
+// Python range. Result is cached by the raw requires-python string to
+// avoid re-parsing identical values across a package's versions.
+func (p *indexProvider) requiresPythonAllowsProject(pkgRequiresPython string) bool {
+	if v, ok := p.rpOverlapCache.Load(pkgRequiresPython); ok {
+		return v.(bool)
+	}
+	ok := pythonRangesOverlap(p.requiresPython, pkgRequiresPython)
+	p.rpOverlapCache.Store(pkgRequiresPython, ok)
+	return ok
 }
 
 func hasRequiresPythonData(info *index.PackageInfo) bool {
@@ -255,15 +276,24 @@ func hasRequiresPythonData(info *index.PackageInfo) bool {
 }
 
 // pythonRangesOverlap checks if a package's requires-python is compatible
-// with the project's requires-python. The package must support ALL Python
-// versions the project targets. E.g., project >=3.10 + package >=3.12 = incompatible
-// because the package doesn't work on 3.10-3.11.
+// with the project's requires-python. The package's lower bound must
+// allow the project's supported Python range.
+//
+// Upper bounds in the PACKAGE's requires-python are stripped before the
+// check (goetry-eos.1). A package declaring `python<3.13` or `python<4`
+// is almost always making a defensive claim — it hasn't been tested on
+// newer Python, not that it's known to break. Honoring those upper bounds
+// causes the resolver to reject otherwise-compatible packages whenever
+// the project targets a Python version past the author's test matrix,
+// triggering backtracking cascades. The project's own requires-python
+// (projectPython) is NOT stripped — users declaring their own upper
+// bound know what they mean.
 func pythonRangesOverlap(projectPython version.Constraint, pkgRequiresPython string) bool {
 	pkgConstraint, err := version.ParseConstraint(pkgRequiresPython)
 	if err != nil {
 		return true // can't parse, don't filter
 	}
-	// Package must allow all versions the project supports.
+	pkgConstraint = version.StripUpperBound(pkgConstraint)
 	return pkgConstraint.AllowsAll(projectPython)
 }
 
