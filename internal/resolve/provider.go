@@ -22,4 +22,10 @@ type Provider interface {
 	// choosePackageVersion to widen base clauses over already-known
 	// neighbor versions without paying synchronous fetch cost.
 	DependenciesIfCached(pkg string, ver version.Version) ([]Dependency, bool)
+	// Preferred returns the version the solver should try FIRST for
+	// `pkg`, regardless of the usual newest-first ordering. Used to
+	// seed the solver from prior-run lockfile state so warm re-lock
+	// picks the already-chosen version when it's still valid. Returns
+	// (zero, false) when no preference exists.
+	Preferred(pkg string) (version.Version, bool)
 }

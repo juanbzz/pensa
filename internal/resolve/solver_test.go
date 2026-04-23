@@ -19,6 +19,10 @@ type mockPackage struct {
 
 type mockProvider struct {
 	packages map[string][]mockPackage
+	// preferred lets tests exercise the R3 Preferred() hook: when set
+	// for a package, the solver should try that version before the
+	// default newest-first scan.
+	preferred map[string]version.Version
 }
 
 func (m *mockProvider) Versions(pkg string) ([]version.Version, error) {
@@ -55,6 +59,13 @@ func (m *mockProvider) DependenciesIfCached(pkg string, ver version.Version) ([]
 		return nil, false
 	}
 	return deps, true
+}
+
+// Preferred returns a version from the optional preferred map. Tests
+// populate it to drive the R3 lockfile-preference path.
+func (m *mockProvider) Preferred(pkg string) (version.Version, bool) {
+	v, ok := m.preferred[pkg]
+	return v, ok
 }
 
 func mustParseVersion(t *testing.T, s string) version.Version {
@@ -463,4 +474,89 @@ func TestSolver_ManyVersionsSharedConflict(t *testing.T) {
 	// in place, conflict resolution generalizes over a's versions and this
 	// fails cleanly. If broken, we hit "exceeded 10000 iterations".
 	assert.True(!strings.Contains(err.Error(), "exceeded 10000 iterations"))
+}
+
+// TestSolver_PreferredPicksPinnedOverNewest confirms R3: when the
+// provider advertises a preferred version that still satisfies the
+// current constraints, the solver picks it ahead of the newest-first
+// default. Models warm re-lock stability against an existing lockfile.
+func TestSolver_PreferredPicksPinnedOverNewest(t *testing.T) {
+	assert := is.New(t)
+
+	provider := &mockProvider{
+		packages: map[string][]mockPackage{
+			"a": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: nil},
+				{ver: mustParseVersion(t, "1.1.0"), deps: nil},
+				{ver: mustParseVersion(t, "1.2.0"), deps: nil},
+			},
+		},
+		preferred: map[string]version.Version{
+			"a": mustParseVersion(t, "1.1.0"),
+		},
+	}
+
+	solver := NewSolver(provider, "myproject", []Dependency{
+		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
+	})
+
+	result, err := solver.Solve()
+	assert.NoErr(err)
+	assert.Equal(result.Decisions["a"].String(), "1.1.0")
+}
+
+// TestSolver_PreferredIgnoredWhenUnsatisfiable confirms R3 falls
+// through to newest-first when the pinned version no longer satisfies
+// current constraints (e.g., user tightened the range in pyproject).
+func TestSolver_PreferredIgnoredWhenUnsatisfiable(t *testing.T) {
+	assert := is.New(t)
+
+	provider := &mockProvider{
+		packages: map[string][]mockPackage{
+			"a": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: nil},
+				{ver: mustParseVersion(t, "2.0.0"), deps: nil},
+				{ver: mustParseVersion(t, "2.5.0"), deps: nil},
+			},
+		},
+		preferred: map[string]version.Version{
+			"a": mustParseVersion(t, "1.0.0"), // outside ^2.0
+		},
+	}
+
+	solver := NewSolver(provider, "myproject", []Dependency{
+		{Pkg: "a", Constraint: mustParseConstraint(t, "^2.0")},
+	})
+
+	result, err := solver.Solve()
+	assert.NoErr(err)
+	assert.Equal(result.Decisions["a"].String(), "2.5.0")
+}
+
+// TestSolver_PreferredMissingFromIndex confirms R3 falls through when
+// the pinned version was yanked or is otherwise absent from the
+// Versions() list. The solver must not crash or stall; it picks the
+// newest satisfying version instead.
+func TestSolver_PreferredMissingFromIndex(t *testing.T) {
+	assert := is.New(t)
+
+	provider := &mockProvider{
+		packages: map[string][]mockPackage{
+			"a": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: nil},
+				{ver: mustParseVersion(t, "1.2.0"), deps: nil},
+			},
+		},
+		preferred: map[string]version.Version{
+			"a": mustParseVersion(t, "1.1.0"), // not in index
+		},
+	}
+
+	solver := NewSolver(provider, "myproject", []Dependency{
+		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
+	})
+
+	result, err := solver.Solve()
+	assert.NoErr(err)
+	assert.Equal(result.Decisions["a"].String(), "1.2.0")
 }

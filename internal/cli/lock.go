@@ -358,6 +358,12 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 	return deps, nil
 }
 
+// Preferred: the base provider has no lockfile context. Preferences
+// come from the lockedProvider wrapper.
+func (p *indexProvider) Preferred(pkg string) (version.Version, bool) {
+	return version.Version{}, false
+}
+
 // DependenciesIfCached returns deps for (pkg, ver) only when the
 // version detail is already in the client's cache (in-memory sync.Map
 // or disk-backed resolution cache). Never triggers a network fetch.

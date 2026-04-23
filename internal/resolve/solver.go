@@ -374,11 +374,31 @@ func (s *Solver) choosePackageVersion() (string, error) {
 	})
 
 	var chosen *version.Version
-	for i := range versions {
-		v := versions[i]
-		if s.solution.Relation(Term{Pkg: pkg, Constraint: version.ExactVersion(v), Positive: true}) != Disjoint {
-			chosen = &v
+	// R3: lockfile preference. When the provider advertises a preferred
+	// version (typically the prior-run lock pin), try it before the
+	// newest-first scan. Keeps warm re-locks stable: if the pinned
+	// version still satisfies current constraints, reuse it instead of
+	// drifting to a newer release. Falls through when the preferred
+	// version is absent, yanked, or contradicted by current state.
+	if pref, ok := s.provider.Preferred(pkg); ok {
+		for i := range versions {
+			if version.Compare(versions[i], pref) != 0 {
+				continue
+			}
+			if s.solution.Relation(Term{Pkg: pkg, Constraint: version.ExactVersion(pref), Positive: true}) != Disjoint {
+				v := versions[i]
+				chosen = &v
+			}
 			break
+		}
+	}
+	if chosen == nil {
+		for i := range versions {
+			v := versions[i]
+			if s.solution.Relation(Term{Pkg: pkg, Constraint: version.ExactVersion(v), Positive: true}) != Disjoint {
+				chosen = &v
+				break
+			}
 		}
 	}
 

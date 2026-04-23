@@ -53,6 +53,10 @@ func (p *prefetchProvider) DependenciesIfCached(pkg string, ver version.Version)
 	return p.inner.DependenciesIfCached(pkg, ver)
 }
 
+func (p *prefetchProvider) Preferred(pkg string) (version.Version, bool) {
+	return p.inner.Preferred(pkg)
+}
+
 // prefetchNextVersions fires background GetVersionDetail calls for the next
 // N versions below the current one. When the solver backtracks, the next
 // candidate is already in the in-memory cache.

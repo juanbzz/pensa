@@ -14,10 +14,11 @@ type lockOptions struct {
 
 var _ resolve.Provider = (*lockedProvider)(nil)
 
-// lockedProvider wraps a resolve.Provider to prefer already-locked versions.
-// When a package has a pinned version, it's moved to the front of the version
-// list so the solver picks it first. If the pinned version no longer satisfies
-// constraints, the solver falls through to the next version naturally.
+// lockedProvider wraps a resolve.Provider to prefer already-locked
+// versions. Preferred(pkg) returns the pinned version; the solver
+// checks it before iterating the (sorted newest-first) version slice.
+// When the pinned version no longer satisfies current constraints, the
+// solver falls through to the normal sort order naturally.
 type lockedProvider struct {
 	underlying      resolve.Provider
 	pinned          map[string]version.Version
@@ -49,36 +50,24 @@ func newLockedProvider(underlying resolve.Provider, lf *lockfile.LockFile, upgra
 }
 
 func (p *lockedProvider) Versions(pkg string) ([]version.Version, error) {
-	versions, err := p.underlying.Versions(pkg)
-	if err != nil {
-		return nil, err
-	}
+	// Pass through — the solver uses Preferred() to bias picks
+	// toward locked versions, rather than relying on slice order
+	// (which the solver re-sorts newest-first anyway).
+	return p.underlying.Versions(pkg)
+}
 
+// Preferred returns the locked version for pkg, if any.
+func (p *lockedProvider) Preferred(pkg string) (version.Version, bool) {
 	normalized := normalizeName(pkg)
-
-	// Skip pinning for packages being upgraded.
 	if p.upgradePackages[normalized] {
-		return versions, nil
+		return version.Version{}, false
 	}
-
 	pin, ok := p.pinned[normalized]
 	if !ok {
-		return versions, nil
+		// Fall through to any upstream preference.
+		return p.underlying.Preferred(pkg)
 	}
-
-	// Copy before mutating — don't modify the caller's slice.
-	result := make([]version.Version, len(versions))
-	copy(result, versions)
-
-	// Move pinned version to front so solver picks it first.
-	for i, v := range result {
-		if version.Compare(v, pin) == 0 {
-			result[0], result[i] = result[i], result[0]
-			break
-		}
-	}
-
-	return result, nil
+	return pin, true
 }
 
 func (p *lockedProvider) Dependencies(pkg string, ver version.Version) ([]resolve.Dependency, error) {
