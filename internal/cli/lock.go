@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -340,30 +339,79 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 	return deps, nil
 }
 
-// isExtrasOnly checks if a dependency is gated by an extras marker.
-// NOTE: fragile text search on rendered marker string.
-// Ideally we'd walk the marker AST for an "extra" node.
+// isExtrasOnly reports whether a dependency is gated by an extras
+// marker — i.e., the dep's marker references the `extra` variable
+// anywhere in its AST. When true, the dep should only be included if
+// the user has requested a matching extra.
+//
+// Walks the Marker AST rather than searching the rendered string.
+// The old text-search approach misfired on string literals that
+// happened to contain "extra ==" and couldn't distinguish `extra == X`
+// from `extra != X` (goetry-eos Layer 2 extras audit).
 func isExtrasOnly(d pep508.Dependency) bool {
-	if d.Markers == nil {
-		return false
-	}
-	return strings.Contains(d.Markers.String(), "extra ==")
+	return markerMentionsExtra(d.Markers)
 }
 
-// isRequestedExtra checks if a dep's extra marker matches any of the requested extras.
-// Marker format: `extra == 'security'` or `extra == "security"`
+// isRequestedExtra reports whether a dep's marker evaluates TRUE for
+// any of the requested extras. Uses Marker.Evaluate with env.Extra
+// set to each requested extra in turn — so operators other than
+// literal `extra == 'X'` (e.g., `extra != 'X'`) are handled correctly.
+//
+// Non-extra environment fields are set to wide-permissive values so
+// that platform/Python-version gates in the same marker don't cause
+// us to drop a dep that would apply at install time. Install-time
+// filtering (compatibleWithPython) handles the narrow case.
 func isRequestedExtra(d pep508.Dependency, requestedExtras []string) bool {
 	if d.Markers == nil || len(requestedExtras) == 0 {
 		return false
 	}
-	markerStr := d.Markers.String()
 	for _, extra := range requestedExtras {
-		if strings.Contains(markerStr, "extra == '"+extra+"'") ||
-			strings.Contains(markerStr, `extra == "`+extra+`"`) {
+		env := permissiveEnv()
+		env.Extra = extra
+		if d.Markers.Evaluate(env) {
 			return true
 		}
 	}
 	return false
+}
+
+// markerMentionsExtra returns true if the marker AST has any
+// CompareMarker referencing the `extra` variable.
+func markerMentionsExtra(m pep508.Marker) bool {
+	switch v := m.(type) {
+	case nil:
+		return false
+	case pep508.AnyMarker:
+		return false
+	case *pep508.CompareMarker:
+		return v.Var == "extra"
+	case *pep508.AndMarker:
+		return markerMentionsExtra(v.Left) || markerMentionsExtra(v.Right)
+	case *pep508.OrMarker:
+		return markerMentionsExtra(v.Left) || markerMentionsExtra(v.Right)
+	}
+	return false
+}
+
+// permissiveEnv returns an Environment where platform/Python fields
+// are set to values that let most markers evaluate TRUE. Used at
+// resolve time to decide extras inclusion without prematurely
+// filtering out deps that would apply at install time on a different
+// Python or platform.
+func permissiveEnv() pep508.Environment {
+	return pep508.Environment{
+		PythonVersion:                "3.99",
+		PythonFullVersion:            "3.99.0",
+		OSName:                       "posix",
+		SysPlatform:                  "linux",
+		PlatformRelease:              "",
+		PlatformSystem:               "Linux",
+		PlatformVersion:              "",
+		PlatformMachine:              "x86_64",
+		PlatformPythonImplementation: "CPython",
+		ImplementationName:           "cpython",
+		ImplementationVersion:        "3.99.0",
+	}
 }
 
 // runLockWorkspace locks all workspace members together into a single lock file.
