@@ -49,6 +49,10 @@ func (p *prefetchProvider) Dependencies(pkg string, ver version.Version) ([]reso
 	return deps, nil
 }
 
+func (p *prefetchProvider) DependenciesIfCached(pkg string, ver version.Version) ([]resolve.Dependency, bool) {
+	return p.inner.DependenciesIfCached(pkg, ver)
+}
+
 // prefetchNextVersions fires background GetVersionDetail calls for the next
 // N versions below the current one. When the solver backtracks, the next
 // candidate is already in the in-memory cache.

@@ -84,3 +84,7 @@ func (p *lockedProvider) Versions(pkg string) ([]version.Version, error) {
 func (p *lockedProvider) Dependencies(pkg string, ver version.Version) ([]resolve.Dependency, error) {
 	return p.underlying.Dependencies(pkg, ver)
 }
+
+func (p *lockedProvider) DependenciesIfCached(pkg string, ver version.Version) ([]resolve.Dependency, bool) {
+	return p.underlying.DependenciesIfCached(pkg, ver)
+}

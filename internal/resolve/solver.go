@@ -91,11 +91,13 @@ type Solver struct {
 	contradicted      map[*Incompatibility]bool
 	solution          *PartialSolution
 	priorities        map[string]int
-	// batched tracks packages where per-version dep incompatibilities are
-	// insufficient — pensa widens each new dep incompatibility into a range
-	// over adjacent versions with identical deps. Set when a decision on the
-	// package is undone during conflict resolution (goetry-f19).
-	batched map[string]bool
+	// alreadyListed memoizes emitted base dependency clauses keyed by
+	// (pkg_range, dep_pkg, dep_constraint). Prevents re-emission when
+	// the solver revisits (pkg, v) via propagation or backtrack. Dart
+	// PubGrub's _alreadyListedDependencies analog. Required for R1
+	// (range-valued base clauses) to not explode the clause set with
+	// overlapping-range duplicates.
+	alreadyListed map[string]struct{}
 }
 
 // NewSolver creates a new PubGrub solver.
@@ -108,7 +110,7 @@ func NewSolver(provider Provider, root string, rootDeps []Dependency) *Solver {
 		contradicted:      make(map[*Incompatibility]bool),
 		solution:          NewPartialSolution(),
 		priorities:        make(map[string]int),
-		batched:           make(map[string]bool),
+		alreadyListed:     make(map[string]struct{}),
 	}
 }
 
@@ -278,13 +280,6 @@ func (s *Solver) resolveConflict(incompat *Incompatibility) (*Incompatibility, e
 		}
 
 		if previousSatisfierLevel < mostRecentSatisfier.DecisionLevel || mostRecentSatisfier.IsDecision() {
-			// When backtracking past a decision, flag the package for
-			// range-batched dep incompatibilities on its next pick. Prevents
-			// per-version thrashing when many versions share a conflicting dep
-			// (goetry-f19). Root package is never batched.
-			if mostRecentSatisfier.IsDecision() && mostRecentSatisfier.Pkg != rootPkg {
-				s.batched[mostRecentSatisfier.Pkg] = true
-			}
 			s.solution.Backtrack(previousSatisfierLevel)
 			s.contradicted = make(map[*Incompatibility]bool)
 			if newIncompat {
@@ -362,13 +357,31 @@ func (s *Solver) choosePackageVersion() (string, error) {
 		return "", fmt.Errorf("fetch dependencies for %s %s: %w", pkg, chosen, err)
 	}
 
+	// R1: range-valued base clauses. Widen chosenConstraint to the
+	// contiguous same-deps range around `chosen` via dependencyBounds.
+	// This prevents the solver from treating every picked version as
+	// an isolated singleton — when many versions share a dep, one
+	// learned clause via resolution covers them all. Dart PubGrub's
+	// incompatibilitiesFor equivalent.
 	chosenConstraint := version.ExactVersion(*chosen)
-	if s.batched[pkg] {
-		if lo, hi, ok := s.dependencyBounds(pkg, *chosen, deps, versions); ok {
-			chosenConstraint = version.NewRange(&lo, &hi, true, true)
-		}
+	if lo, hi, ok := s.dependencyBounds(pkg, *chosen, deps, versions); ok {
+		chosenConstraint = version.NewRange(&lo, &hi, true, true)
 	}
+
 	for _, dep := range deps {
+		// R1 memo: skip emission when an identical (pkg_range, dep_pkg,
+		// dep_constraint) clause has already been added. Without this,
+		// every revisit of (pkg, v) emits duplicate clauses, tanking
+		// propagation. Dart's _alreadyListedDependencies equivalent.
+		depConstraintStr := "*"
+		if dep.Constraint != nil {
+			depConstraintStr = dep.Constraint.String()
+		}
+		key := pkg + "|" + chosenConstraint.String() + "|" + dep.Pkg + "|" + depConstraintStr
+		if _, seen := s.alreadyListed[key]; seen {
+			continue
+		}
+		s.alreadyListed[key] = struct{}{}
 		s.addIncompatibility(&Incompatibility{
 			Terms: []Term{
 				{Pkg: pkg, Constraint: chosenConstraint, Positive: true},
@@ -379,7 +392,6 @@ func (s *Solver) choosePackageVersion() (string, error) {
 	}
 
 	s.solution.Decide(pkg, *chosen)
-	delete(s.batched, pkg)
 
 	return pkg, nil
 }
@@ -436,24 +448,24 @@ func (s *Solver) dependencyBounds(pkg string, chosen version.Version, deps []Dep
 	return lo, hi, true
 }
 
-// canExtendBound checks whether `neighbor` can be merged into the range
-// around a chosen version. Returns false when the neighbor is already
-// disallowed by the current positive term, when fetching its deps errors,
-// or when its deps differ from `deps`.
+// canExtendBound checks whether `neighbor` can be merged into the
+// range around a chosen version. Returns false when:
+//   - neighbor is already disallowed by the current positive term, OR
+//   - neighbor's deps aren't in the provider cache (cache-only probe —
+//     never triggers a fetch), OR
+//   - neighbor's deps differ from `deps`.
 //
-// A walk may issue O(N) provider.Dependencies calls per batched pick. On a
-// cold cache this warms the same versions the solver would have fetched
-// anyway during backtrack; the existing CachedClient + resolutionCache
-// layers make warm calls in-memory lookups. Errors are treated as "can't
-// extend" (benign: the range just stops here) — persistent provider errors
-// would surface separately when the solver later decides on the neighbor.
+// Cache-only semantics keep the hot path from waiting on network
+// fetches while still widening as the cache warms. Versions the
+// solver fetches on its own earlier picks accumulate in the cache,
+// so successive widening walks reach further.
 func (s *Solver) canExtendBound(pkg string, neighbor version.Version, deps []Dependency) bool {
 	rel := s.solution.Relation(Term{Pkg: pkg, Constraint: version.ExactVersion(neighbor), Positive: true})
 	if rel == Disjoint {
 		return false
 	}
-	nDeps, err := s.provider.Dependencies(pkg, neighbor)
-	if err != nil {
+	nDeps, cached := s.provider.DependenciesIfCached(pkg, neighbor)
+	if !cached {
 		return false
 	}
 	return depsEqual(deps, nDeps)

@@ -46,6 +46,17 @@ func (m *mockProvider) Dependencies(pkg string, ver version.Version) ([]Dependen
 	return nil, fmt.Errorf("version %s of %s not found", ver, pkg)
 }
 
+// DependenciesIfCached: mocks have no separate cache layer, so
+// everything they know is "cached". Return deps as if all were
+// already fetched.
+func (m *mockProvider) DependenciesIfCached(pkg string, ver version.Version) ([]Dependency, bool) {
+	deps, err := m.Dependencies(pkg, ver)
+	if err != nil {
+		return nil, false
+	}
+	return deps, true
+}
+
 func mustParseVersion(t *testing.T, s string) version.Version {
 	t.Helper()
 	v, err := version.Parse(s)

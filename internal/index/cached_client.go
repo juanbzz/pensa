@@ -81,6 +81,26 @@ func (c *CachedClient) GetPackageInfo(name string) (*PackageInfo, error) {
 	return info, nil
 }
 
+// VersionDetailIfCached returns cached detail for (name, ver) without
+// triggering a fetch. Checks the in-memory sync.Map first, then the
+// copy-on-write resolution cache (disk-backed but lock-free-for-read).
+// Returns (nil, false) on miss. Used by the solver's range-batching
+// widening (goetry-z6r R1) to grow learned clauses across cached
+// neighbors without paying network cost.
+func (c *CachedClient) VersionDetailIfCached(name string, ver version.Version) (*VersionDetail, bool) {
+	key := fmt.Sprintf("%s/%s", name, ver)
+	if v, ok := c.details.Load(key); ok {
+		return v.(*VersionDetail), true
+	}
+	if c.resCache != nil {
+		if detail := c.getFromResolutionCache(name, ver); detail != nil {
+			c.details.Store(key, detail)
+			return detail, true
+		}
+	}
+	return nil, false
+}
+
 func (c *CachedClient) GetVersionDetail(name string, ver version.Version) (*VersionDetail, error) {
 	key := fmt.Sprintf("%s/%s", name, ver)
 	if v, ok := c.details.Load(key); ok {

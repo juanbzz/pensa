@@ -358,6 +358,31 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 	return deps, nil
 }
 
+// DependenciesIfCached returns deps for (pkg, ver) only when the
+// version detail is already in the client's cache (in-memory sync.Map
+// or disk-backed resolution cache). Never triggers a network fetch.
+// Used by the solver's range-batching (goetry-z6r R1) to widen base
+// clauses across cached neighbors.
+func (p *indexProvider) DependenciesIfCached(pkg string, ver version.Version) ([]resolve.Dependency, bool) {
+	detail, ok := p.client.VersionDetailIfCached(pkg, ver)
+	if !ok || detail == nil {
+		return nil, false
+	}
+	extras := p.requestedExtras[normalizeName(pkg)]
+	var deps []resolve.Dependency
+	for _, d := range detail.Dependencies {
+		if isExtrasOnly(d) && !isRequestedExtra(d, extras) {
+			continue
+		}
+		constraint := d.Constraint
+		if constraint == nil {
+			constraint = version.AnyConstraint()
+		}
+		deps = append(deps, resolve.Dependency{Pkg: d.Name, Constraint: constraint})
+	}
+	return deps, true
+}
+
 // isExtrasOnly reports whether a dependency is gated by an extras
 // marker — i.e., the dep's marker references the `extra` variable
 // anywhere in its AST. When true, the dep should only be included if
