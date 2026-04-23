@@ -128,6 +128,20 @@ func (a *anyConstraint) Difference(other Constraint) Constraint {
 			NewRange(&v, nil, false, false),
 		)
 	}
+	// any minus a union = subtract each part iteratively. Without this,
+	// the generic fallback returns `a` unchanged, which is semantically
+	// wrong — missed by all prior callers until the property-test audit
+	// in goetry-eos / Layer 0.
+	if u, ok := other.(*Union); ok {
+		result := Constraint(a)
+		for _, part := range u.constraints {
+			result = result.Difference(part)
+			if result.IsEmpty() {
+				return empty
+			}
+		}
+		return result
+	}
 	return a
 }
 
