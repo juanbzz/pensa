@@ -331,6 +331,14 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 			if !isRequestedExtra(d, extras) {
 				continue
 			}
+		} else if !markerKeepsDep(d.Markers, p.requiresPython) {
+			// Marker is python-only and unsatisfiable across the
+			// project's requires-python range — skip. Prevents
+			// per-package self-contradiction when a package ships
+			// marker-split dep declarations (e.g. stripe 11.0.0
+			// has typing-extensions<=4.2.0 for Python<3.7 AND
+			// typing-extensions>=4.5.0 for Python>=3.7).
+			continue
 		}
 		constraint := d.Constraint
 		if constraint == nil {
@@ -377,7 +385,11 @@ func (p *indexProvider) DependenciesIfCached(pkg string, ver version.Version) ([
 	extras := p.requestedExtras[normalizeName(pkg)]
 	var deps []resolve.Dependency
 	for _, d := range detail.Dependencies {
-		if isExtrasOnly(d) && !isRequestedExtra(d, extras) {
+		if isExtrasOnly(d) {
+			if !isRequestedExtra(d, extras) {
+				continue
+			}
+		} else if !markerKeepsDep(d.Markers, p.requiresPython) {
 			continue
 		}
 		constraint := d.Constraint
