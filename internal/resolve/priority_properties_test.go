@@ -65,13 +65,18 @@ func TestPriorityProp_HighestPriorityWins(t *testing.T) {
 // candidate is effectively random. This makes chooseBest behavior
 // NON-DETERMINISTIC across runs for graphs with priority ties — a
 // known source of flakiness that motivates the Layer 3 fix.
+//
+// A naive lexical tiebreak was tried and reverted (2026-04-23) —
+// it made lifeandhomes pathological (14+ minute runs), because the
+// alphabetically-first pkg happens to be a bad starting decision
+// on that graph. The proper fix needs a state-aware tiebreak (MCV,
+// VSIDS, or dep-fanout), not just determinism.
 func TestPriorityProp_TieFirstWins(t *testing.T) {
 	s := solverWithPriorities(map[string]int{
 		"a": 50,
 		"b": 50,
 		"c": 50,
 	})
-	// Current behavior: first candidate wins.
 	if got := s.chooseBest([]string{"a", "b", "c"}); got != "a" {
 		t.Errorf("got %q; want 'a' (first on tie)", got)
 	}
@@ -81,9 +86,6 @@ func TestPriorityProp_TieFirstWins(t *testing.T) {
 	if got := s.chooseBest([]string{"c", "b", "a"}); got != "c" {
 		t.Errorf("got %q; want 'c' (first on tie)", got)
 	}
-	// This is the non-determinism source: swap input order, swap
-	// result. Documenting so the fix (lexical tiebreak, or MCV, or
-	// VSIDS) can flip these expectations when it lands.
 }
 
 // Missing entries in the priorities map are treated as priority 0.
@@ -179,14 +181,15 @@ func TestPriorityProp_MonotonicallyIncreasing(t *testing.T) {
 
 // This test illustrates the non-determinism: given the same priorities
 // but different input orderings of equally-prioritized pkgs, chooseBest
-// produces different results.
+// produces different results. This is a real flakiness source that
+// Layer 3 must address — BUT only together with a smarter tiebreak,
+// because naive lexical ordering picked a pathological first pkg on
+// lifeandhomes-class graphs (14+ minute hang).
 func TestPriorityProp_NonDeterministicOnTies(t *testing.T) {
 	s := solverWithPriorities(map[string]int{
 		"a": 50, "b": 50, "c": 50, "d": 50,
 	})
 	seen := map[string]bool{}
-	// Run with a few handpicked orderings to cover all four pkgs as
-	// "first".
 	orderings := [][]string{
 		{"a", "b", "c", "d"},
 		{"b", "c", "d", "a"},
@@ -196,8 +199,6 @@ func TestPriorityProp_NonDeterministicOnTies(t *testing.T) {
 	for _, order := range orderings {
 		seen[s.chooseBest(order)] = true
 	}
-	// Four different first-items → four different results. No single
-	// result would satisfy a deterministic pick.
 	if len(seen) != 4 {
 		t.Errorf("expected 4 distinct picks across shuffled inputs; got %d: %v",
 			len(seen), sortedKeys(seen))
