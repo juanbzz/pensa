@@ -222,34 +222,53 @@ func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
 	if err != nil {
 		return nil, err
 	}
+	return filterCandidateVersions(info, p.requiresPython, p.requiresPythonAllowsProject), nil
+}
 
-	// Resolution-cache-backed PackageInfo objects have no file-level data,
-	// so RequiresPython is empty and the filter is a no-op for them. That
-	// matches previous behavior — those versions were already resolved
-	// successfully, so we trust them.
-
+// filterCandidateVersions applies the resolver-level version filter:
+//   1. Drop non-stable versions (prereleases + dev releases).
+//   2. Drop versions whose requires-python is incompatible with the
+//      project's (upper bounds on the package side are stripped; see
+//      requiresPythonAllowsProject).
+//
+// Fallback: if every version is filtered out, return allVersions
+// unchanged. Rationale — a package that has ONLY prereleases (e.g.
+// pre-1.0 libs) needs to be resolvable. Without the fallback, the
+// solver would fail on "no versions" for such packages.
+//
+// Known gap (goetry-eos Layer 2 audit): an exact pin on a prerelease
+// (==1.0.0rc1) when stable versions exist will filter the rc1 out.
+// The solver then fails because it can't find a version satisfying
+// the pin. The fallback only fires when ALL versions are prereleases.
+// Not fixed here — documented so a future opt-in-prerelease flag can
+// address it.
+//
+// Exposed as a package-level function (rather than an indexProvider
+// method) so it can be unit-tested without constructing a full
+// PyPIClient + resolution-cache chain.
+func filterCandidateVersions(
+	info *index.PackageInfo,
+	requiresPython version.Constraint,
+	requiresPythonAllowsProject func(pkgRequiresPython string) bool,
+) []version.Version {
 	allVersions := info.Versions()
 	var compatible []version.Version
 	for _, v := range allVersions {
 		if !v.IsStable() {
 			continue
 		}
-		// Filter by requires-python at the resolver level. Cheap via
-		// PackageInfo.RequiresPythonFor + rpOverlapCache memoization.
-		// Upper bounds on the package side are stripped because they're
-		// defensive declarations, not hard incompatibilities (goetry-eos.1).
-		if p.requiresPython != nil {
+		if requiresPython != nil {
 			rp := info.RequiresPythonFor(v)
-			if rp != "" && !p.requiresPythonAllowsProject(rp) {
+			if rp != "" && !requiresPythonAllowsProject(rp) {
 				continue
 			}
 		}
 		compatible = append(compatible, v)
 	}
 	if len(compatible) == 0 {
-		return allVersions, nil
+		return allVersions
 	}
-	return compatible, nil
+	return compatible
 }
 
 // requiresPythonAllowsProject returns whether a package's requires-python
