@@ -495,6 +495,26 @@ func (s *Solver) positiveTermFor(pkg string) Term {
 	return Term{Pkg: pkg, Constraint: version.AnyConstraint(), Positive: true}
 }
 
+// chooseBest key: (priority desc, fanout desc, name asc).
+//
+// Priority comes from constraintPriority (singleton > bounded > any)
+// seeded by addIncompatibility.
+//
+// Fanout = len(s.incompatibilities[pkg]) — the number of clauses
+// referencing the pkg. More clauses = more constraints already
+// narrowing the pkg = better candidate to decide next. This is a
+// cheap O(1) proxy for "how constrained is this package"; Dart's
+// Most-Constrained-Variable heuristic (count valid versions) gives
+// similar signal but costs O(versions) per call, which regressed
+// pgm 3x and lifeandhomes 30x in benchmarks (see the goetry-eos
+// Layer 3 experiment notes).
+//
+// Name tiebreak is the final deterministic fallback — without it,
+// two pkgs with the same priority AND same fanout would pick based
+// on input-slice order, which comes from Go's randomized map
+// iteration in PartialSolution.Unsatisfied. With the fanout term
+// discriminating most cases, the name tiebreak rarely fires but
+// eliminates the non-determinism flake that the old code had.
 func (s *Solver) chooseBest(pkgs []string) string {
 	if len(pkgs) == 1 {
 		return pkgs[0]
@@ -502,12 +522,25 @@ func (s *Solver) chooseBest(pkgs []string) string {
 
 	best := pkgs[0]
 	bestPri := s.priorities[best]
+	bestFan := len(s.incompatibilities[best])
 
 	for _, pkg := range pkgs[1:] {
 		pri := s.priorities[pkg]
+		fan := len(s.incompatibilities[pkg])
+		better := false
 		if pri > bestPri {
+			better = true
+		} else if pri == bestPri {
+			if fan > bestFan {
+				better = true
+			} else if fan == bestFan && pkg < best {
+				better = true
+			}
+		}
+		if better {
 			best = pkg
 			bestPri = pri
+			bestFan = fan
 		}
 	}
 	return best

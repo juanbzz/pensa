@@ -59,32 +59,50 @@ func TestPriorityProp_HighestPriorityWins(t *testing.T) {
 	}
 }
 
-// KNOWN behavior, not asserted as correct: on a tie, the FIRST
-// candidate in the input slice wins. Since the input comes from
-// PartialSolution.Unsatisfied() which walks a Go map, the first
-// candidate is effectively random. This makes chooseBest behavior
-// NON-DETERMINISTIC across runs for graphs with priority ties — a
-// known source of flakiness that motivates the Layer 3 fix.
-//
-// A naive lexical tiebreak was tried and reverted (2026-04-23) —
-// it made lifeandhomes pathological (14+ minute runs), because the
-// alphabetically-first pkg happens to be a bad starting decision
-// on that graph. The proper fix needs a state-aware tiebreak (MCV,
-// VSIDS, or dep-fanout), not just determinism.
-func TestPriorityProp_TieFirstWins(t *testing.T) {
+// chooseBest tiebreaks ties (equal priority) by fanout — the number
+// of clauses referencing the pkg — with name as the final
+// deterministic fallback. When fanout is also equal (e.g. in this
+// test where s.incompatibilities is empty, so all pkgs have 0
+// fanout), name-ascending wins, which is deterministic.
+func TestPriorityProp_TieTiebreaksByFanoutThenName(t *testing.T) {
 	s := solverWithPriorities(map[string]int{
 		"a": 50,
 		"b": 50,
 		"c": 50,
 	})
-	if got := s.chooseBest([]string{"a", "b", "c"}); got != "a" {
-		t.Errorf("got %q; want 'a' (first on tie)", got)
+	// Empty incompatibilities → fanout 0 for all → lexical wins.
+	for _, order := range [][]string{
+		{"a", "b", "c"},
+		{"b", "a", "c"},
+		{"c", "b", "a"},
+	} {
+		if got := s.chooseBest(order); got != "a" {
+			t.Errorf("order %v: got %q; want 'a' (all fanout 0 → lexical)", order, got)
+		}
 	}
-	if got := s.chooseBest([]string{"b", "a", "c"}); got != "b" {
-		t.Errorf("got %q; want 'b' (first on tie)", got)
+}
+
+// Higher fanout wins over lexical.
+func TestPriorityProp_FanoutBeatsLexical(t *testing.T) {
+	ic := &Incompatibility{}
+	s := &Solver{
+		priorities: map[string]int{"a": 50, "b": 50, "c": 50},
+		incompatibilities: map[string][]*Incompatibility{
+			// 'c' has the most clauses referencing it; should win the
+			// tiebreak despite losing the lexical subtest.
+			"a": {ic},
+			"b": {ic, ic},
+			"c": {ic, ic, ic},
+		},
 	}
-	if got := s.chooseBest([]string{"c", "b", "a"}); got != "c" {
-		t.Errorf("got %q; want 'c' (first on tie)", got)
+	for _, order := range [][]string{
+		{"a", "b", "c"},
+		{"b", "a", "c"},
+		{"c", "b", "a"},
+	} {
+		if got := s.chooseBest(order); got != "c" {
+			t.Errorf("order %v: got %q; want 'c' (fanout 3 > 2 > 1)", order, got)
+		}
 	}
 }
 
@@ -177,15 +195,13 @@ func TestPriorityProp_MonotonicallyIncreasing(t *testing.T) {
 	}
 }
 
-// --- Determinism failure demonstration ---
+// --- Determinism invariant ---
 
-// This test illustrates the non-determinism: given the same priorities
-// but different input orderings of equally-prioritized pkgs, chooseBest
-// produces different results. This is a real flakiness source that
-// Layer 3 must address — BUT only together with a smarter tiebreak,
-// because naive lexical ordering picked a pathological first pkg on
-// lifeandhomes-class graphs (14+ minute hang).
-func TestPriorityProp_NonDeterministicOnTies(t *testing.T) {
+// chooseBest is now deterministic: same priorities + same fanout +
+// same pkg set → same pick regardless of input slice order. (Go's
+// randomized map iteration in PartialSolution.Unsatisfied can no
+// longer leak into solver behavior.)
+func TestPriorityProp_DeterministicAcrossOrderings(t *testing.T) {
 	s := solverWithPriorities(map[string]int{
 		"a": 50, "b": 50, "c": 50, "d": 50,
 	})
@@ -199,8 +215,8 @@ func TestPriorityProp_NonDeterministicOnTies(t *testing.T) {
 	for _, order := range orderings {
 		seen[s.chooseBest(order)] = true
 	}
-	if len(seen) != 4 {
-		t.Errorf("expected 4 distinct picks across shuffled inputs; got %d: %v",
+	if len(seen) != 1 {
+		t.Errorf("expected 1 deterministic pick across orderings; got %d: %v",
 			len(seen), sortedKeys(seen))
 	}
 }
