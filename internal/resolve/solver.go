@@ -88,9 +88,16 @@ type Solver struct {
 	root              string
 	rootDeps          []Dependency
 	incompatibilities map[string][]*Incompatibility
-	contradicted      map[*Incompatibility]bool
-	solution          *PartialSolution
-	priorities        map[string]int
+	// contradicted tracks clauses that currently can't fire: value is
+	// the decision level at which the contradiction was established.
+	// Zero means "not contradicted". On backtrack to level L we drop
+	// entries with value > L — those contradictions depended on
+	// assignments that are now undone. Clauses contradicted at level
+	// 0 (from root-level constraints) persist permanently, matching
+	// Poetry's _contradicted_incompatibilities_by_level.
+	contradicted map[*Incompatibility]int
+	solution     *PartialSolution
+	priorities   map[string]int
 	// alreadyListed memoizes emitted base dependency clauses keyed by
 	// (pkg_range, dep_pkg, dep_constraint). Prevents re-emission when
 	// the solver revisits (pkg, v) via propagation or backtrack. Dart
@@ -107,7 +114,7 @@ func NewSolver(provider Provider, root string, rootDeps []Dependency) *Solver {
 		root:              root,
 		rootDeps:          rootDeps,
 		incompatibilities: make(map[string][]*Incompatibility),
-		contradicted:      make(map[*Incompatibility]bool),
+		contradicted:      make(map[*Incompatibility]int),
 		solution:          NewPartialSolution(),
 		priorities:        make(map[string]int),
 		alreadyListed:     make(map[string]struct{}),
@@ -175,7 +182,7 @@ func (s *Solver) propagate(pkg string) error {
 
 		incompats := s.incompatibilities[current]
 		for i := len(incompats) - 1; i >= 0; i-- {
-			if s.contradicted[incompats[i]] {
+			if _, done := s.contradicted[incompats[i]]; done {
 				continue
 			}
 			result := s.propagateIncompatibility(incompats[i])
@@ -212,7 +219,7 @@ func (s *Solver) propagateIncompatibility(incompat *Incompatibility) propagateRe
 		rel := s.solution.Relation(*t)
 
 		if rel == Disjoint {
-			s.contradicted[incompat] = true
+			s.markContradicted(incompat)
 			return propagateResult{}
 		}
 
@@ -228,11 +235,39 @@ func (s *Solver) propagateIncompatibility(incompat *Incompatibility) propagateRe
 		return propagateResult{conflict: true}
 	}
 
-	s.contradicted[incompat] = true
+	s.markContradicted(incompat)
 
 	inv := unsatisfied.Inverse()
 	s.solution.Derive(inv, incompat)
 	return propagateResult{pkg: unsatisfied.Pkg}
+}
+
+// markContradicted records that `incompat` can't fire at the current
+// decision level or below. Used by propagate to skip already-handled
+// clauses. On backtrack to level L, clearContradictedAbove(L) drops
+// entries above L since those contradictions depended on assignments
+// that have been undone.
+func (s *Solver) markContradicted(incompat *Incompatibility) {
+	level := s.solution.DecisionLevel()
+	// Level 0 is the most-permanent (pre-any-decision) mark — store
+	// as 1 so the "zero value = not contradicted" sentinel stays
+	// clean. We never backtrack below level 1 (root is kept).
+	if level < 1 {
+		level = 1
+	}
+	s.contradicted[incompat] = level
+}
+
+// clearContradictedAbove drops contradicted entries recorded at
+// decision levels above `level`. Called by resolveConflict after
+// backtracking — assignments at those levels are undone, so any
+// contradictions that depended on them may no longer hold.
+func (s *Solver) clearContradictedAbove(level int) {
+	for ic, lvl := range s.contradicted {
+		if lvl > level {
+			delete(s.contradicted, ic)
+		}
+	}
 }
 
 func (s *Solver) resolveConflict(incompat *Incompatibility) (*Incompatibility, error) {
@@ -281,7 +316,11 @@ func (s *Solver) resolveConflict(incompat *Incompatibility) (*Incompatibility, e
 
 		if previousSatisfierLevel < mostRecentSatisfier.DecisionLevel || mostRecentSatisfier.IsDecision() {
 			s.solution.Backtrack(previousSatisfierLevel)
-			s.contradicted = make(map[*Incompatibility]bool)
+			// Selective clear: drop contradictions from levels above
+			// the backtrack target (Poetry's level-indexed pattern).
+			// Contradictions established at or below the target are
+			// still valid — no need to re-propagate them.
+			s.clearContradictedAbove(previousSatisfierLevel)
 			if newIncompat {
 				s.addIncompatibility(incompat)
 			}

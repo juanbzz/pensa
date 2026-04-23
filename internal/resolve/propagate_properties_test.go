@@ -109,7 +109,7 @@ func TestPropagateProp_AnyDisjointIsContradicted(t *testing.T) {
 	if result.pkg != "" {
 		t.Errorf("expected no derivation, got pkg=%q", result.pkg)
 	}
-	if !s.contradicted[incompat] {
+	if _, done := s.contradicted[incompat]; !done {
 		t.Error("expected clause to be marked contradicted")
 	}
 }
@@ -171,7 +171,7 @@ func TestPropagateProp_TwoOverlappingIsNoop(t *testing.T) {
 	if result.pkg != "" {
 		t.Errorf("expected no-op, got derivation for pkg=%q", result.pkg)
 	}
-	if s.contradicted[incompat] {
+	if _, done := s.contradicted[incompat]; done {
 		t.Error("expected clause to not be marked contradicted on no-op")
 	}
 }
@@ -263,7 +263,7 @@ func TestPropagateProp_DerivationPropagates(t *testing.T) {
 	if r2.conflict {
 		t.Error("expected contradicted, got conflict")
 	}
-	if !s.contradicted[second] {
+	if _, done := s.contradicted[second]; !done {
 		t.Error("expected second clause to be contradicted after prior derivation")
 	}
 }
