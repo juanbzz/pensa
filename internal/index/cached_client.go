@@ -11,12 +11,17 @@ import (
 var _ Repository = (*CachedClient)(nil)
 
 type CachedClient struct {
-	client    *PyPIClient
-	resCache  *ResolutionCache
-	packages  sync.Map // string → *PackageInfo
-	details   sync.Map // string → *VersionDetail
-	resMu     sync.Mutex    // protects resolution cache read-modify-write
-	wg        sync.WaitGroup // tracks background cache update goroutines
+	client   *PyPIClient
+	resCache *ResolutionCache
+	packages sync.Map // string → *PackageInfo
+	details  sync.Map // string → *VersionDetail
+	// resMu serializes writes to the resolution cache. Writers use
+	// copy-on-write: they clone the ResolutionPackage.Deps map before
+	// mutating, then swap the pointer back via resCache.Put. Readers
+	// access the old pointer (via resCache.Get's sync.Map), whose
+	// Deps map is now immutable, without locking.
+	resMu sync.Mutex
+	wg    sync.WaitGroup // tracks background cache update goroutines
 }
 
 func NewCachedClient(client *PyPIClient, resCache *ResolutionCache) *CachedClient {
@@ -128,11 +133,15 @@ func (c *CachedClient) fetchVersionDetail(name string, ver version.Version) (*Ve
 
 func (c *CachedClient) getFromResolutionCache(name string, ver version.Version) *VersionDetail {
 	normalized := pep508.NormalizeName(name)
+	// Lock-free read: copy-on-write writers (store/updateResolutionCache)
+	// publish a fresh *ResolutionPackage via resCache.Put, leaving the
+	// old pointer's Deps map immutable. Any snapshot we read here is
+	// internally consistent even if a concurrent writer is about to
+	// publish a newer one.
 	pkg, err := c.resCache.Get(normalized)
 	if err != nil {
 		return nil
 	}
-
 	entry, ok := pkg.Deps[ver.String()]
 	if !ok {
 		return nil
@@ -153,13 +162,17 @@ func (c *CachedClient) updateResolutionCache(info *PackageInfo) {
 	normalized := pep508.NormalizeName(info.Name)
 	existing, _ := c.resCache.Get(normalized)
 	if existing == nil {
-		existing = FromPackageInfo(info)
-	} else {
-		fresh := FromPackageInfo(info)
-		fresh.Deps = existing.Deps
-		existing = fresh
+		c.resCache.Put(FromPackageInfo(info))
+		return
 	}
-	c.resCache.Put(existing)
+	// Copy-on-write: build a fresh package (re-using the old Deps map
+	// verbatim is safe, since readers only access what was published
+	// before their Get returned, and the old pointer's Deps isn't
+	// mutated after publication). But we still need a NEW top-level
+	// struct so concurrent readers with the old pointer aren't affected.
+	fresh := FromPackageInfo(info)
+	fresh.Deps = existing.Deps
+	c.resCache.Put(fresh)
 }
 
 func (c *CachedClient) storeInResolutionCache(name string, detail *VersionDetail) {
@@ -167,13 +180,31 @@ func (c *CachedClient) storeInResolutionCache(name string, detail *VersionDetail
 	defer c.resMu.Unlock()
 
 	normalized := pep508.NormalizeName(name)
-	pkg, _ := c.resCache.Get(normalized)
-	if pkg == nil {
-		pkg = &ResolutionPackage{
+	old, _ := c.resCache.Get(normalized)
+	var fresh *ResolutionPackage
+	if old == nil {
+		fresh = &ResolutionPackage{
 			Name: normalized,
-			Deps: make(map[string]ResolutionEntry),
+			Deps: map[string]ResolutionEntry{
+				detail.Version.String(): FromVersionDetail(detail),
+			},
 		}
+	} else {
+		// Copy-on-write: clone Deps before mutating so concurrent readers
+		// holding the old pointer see an immutable snapshot. The top-level
+		// struct is also new; the new pointer is published via
+		// resCache.Put which uses sync.Map internally.
+		fresh = &ResolutionPackage{
+			Name:      old.Name,
+			Versions:  old.Versions,
+			PEP658:    old.PEP658,
+			WheelURLs: old.WheelURLs,
+			Deps:      make(map[string]ResolutionEntry, len(old.Deps)+1),
+		}
+		for k, v := range old.Deps {
+			fresh.Deps[k] = v
+		}
+		fresh.Deps[detail.Version.String()] = FromVersionDetail(detail)
 	}
-	pkg.Deps[detail.Version.String()] = FromVersionDetail(detail)
-	c.resCache.Put(pkg)
+	c.resCache.Put(fresh)
 }
