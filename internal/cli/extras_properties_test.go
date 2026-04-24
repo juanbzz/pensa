@@ -6,7 +6,7 @@ import (
 	"pensa.sh/pensa/pkg/pep508"
 )
 
-// extras filtering audit (goetry-eos Layer 2)
+// extras filtering audit.
 //
 // indexProvider.Dependencies uses isExtrasOnly + isRequestedExtra to
 // decide which transitive deps to include during resolution. These

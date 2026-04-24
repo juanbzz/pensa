@@ -197,7 +197,7 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 // matching the current CPython version.
 //
 // Upper bounds in the package's python-versions constraint are stripped
-// before checking (goetry-eos.1). Most `python<X.Y` declarations are
+// before checking. Most `python<X.Y` declarations are
 // defensive ("untested on newer") rather than hard incompatibilities;
 // rejecting an install because of one is usually a worse outcome than
 // letting the user run and discover any actual breakage themselves.

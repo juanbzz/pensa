@@ -7,7 +7,7 @@ import (
 	"pensa.sh/pensa/pkg/version"
 )
 
-// Priority heuristic audit (goetry-eos Layer 3)
+// Priority heuristic audit.
 //
 // chooseBest picks the next package to decide from a slice of
 // unsatisfied package names. The policy:

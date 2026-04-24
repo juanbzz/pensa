@@ -1,7 +1,5 @@
 package version
 
-import "fmt"
-
 // Constraint represents a version constraint that the resolver operates on.
 type Constraint interface {
 	IsEmpty() bool
@@ -732,7 +730,7 @@ func (u *Union) String() string {
 	for i, c := range u.constraints {
 		parts[i] = c.String()
 	}
-	return fmt.Sprintf("%s", joinOr(parts))
+	return joinOr(parts)
 }
 
 func joinOr(parts []string) string {

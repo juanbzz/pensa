@@ -14,8 +14,8 @@ import (
 // in primitives (Layer 0 / 1 covers those).
 //
 // These tests construct graphs shaped like real-world Python patterns
-// where pensa has historically been weak (goetry-eos): large
-// version sets with narrow transitive constraints, diamonds with
+// that historically strained pensa: large version sets with narrow
+// transitive constraints, diamonds with
 // overlapping-but-not-identical requirements, chains where a leaf
 // dominates upstream choice.
 //
@@ -348,8 +348,8 @@ func TestSolvability_BacktrackFindsAlternative(t *testing.T) {
 
 // --- Scale-up: lifeandhomes-like complexity ---
 
-// Mimics the py-lifeandhomes-core pattern that triggers goetry-eos:
-// many direct deps, one heavy-versioned pkg, version-specific
+// Mimics a real-world workspace pattern: many direct deps, one
+// heavy-versioned pkg, version-specific
 // transitive constraints on a shared low-level pkg, and an overlap
 // that pins the heavy pkg to a specific version.
 //

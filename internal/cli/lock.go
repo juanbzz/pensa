@@ -236,12 +236,11 @@ func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
 // pre-1.0 libs) needs to be resolvable. Without the fallback, the
 // solver would fail on "no versions" for such packages.
 //
-// Known gap (goetry-eos Layer 2 audit): an exact pin on a prerelease
-// (==1.0.0rc1) when stable versions exist will filter the rc1 out.
-// The solver then fails because it can't find a version satisfying
-// the pin. The fallback only fires when ALL versions are prereleases.
-// Not fixed here — documented so a future opt-in-prerelease flag can
-// address it.
+// Known gap: an exact pin on a prerelease (==1.0.0rc1) when stable
+// versions exist will filter the rc1 out. The solver then fails
+// because it can't find a version satisfying the pin. The fallback
+// only fires when ALL versions are prereleases. An opt-in-prerelease
+// flag would address it.
 //
 // Exposed as a package-level function (rather than an indexProvider
 // method) so it can be unit-tested without constructing a full
@@ -298,7 +297,7 @@ func hasRequiresPythonData(info *index.PackageInfo) bool {
 // allow the project's supported Python range.
 //
 // Upper bounds in the PACKAGE's requires-python are stripped before the
-// check (goetry-eos.1). A package declaring `python<3.13` or `python<4`
+// check. A package declaring `python<3.13` or `python<4`
 // is almost always making a defensive claim — it hasn't been tested on
 // newer Python, not that it's known to break. Honoring those upper bounds
 // causes the resolver to reject otherwise-compatible packages whenever
@@ -375,8 +374,8 @@ func (p *indexProvider) Preferred(pkg string) (version.Version, bool) {
 // DependenciesIfCached returns deps for (pkg, ver) only when the
 // version detail is already in the client's cache (in-memory sync.Map
 // or disk-backed resolution cache). Never triggers a network fetch.
-// Used by the solver's range-batching (goetry-z6r R1) to widen base
-// clauses across cached neighbors.
+// Used by the solver's range-batching to widen base clauses across
+// cached neighbors.
 func (p *indexProvider) DependenciesIfCached(pkg string, ver version.Version) ([]resolve.Dependency, bool) {
 	detail, ok := p.client.VersionDetailIfCached(pkg, ver)
 	if !ok || detail == nil {
@@ -407,9 +406,9 @@ func (p *indexProvider) DependenciesIfCached(pkg string, ver version.Version) ([
 // the user has requested a matching extra.
 //
 // Walks the Marker AST rather than searching the rendered string.
-// The old text-search approach misfired on string literals that
-// happened to contain "extra ==" and couldn't distinguish `extra == X`
-// from `extra != X` (goetry-eos Layer 2 extras audit).
+// A text-search approach misfires on string literals that happen
+// to contain "extra ==" and can't distinguish `extra == X` from
+// `extra != X`.
 func isExtrasOnly(d pep508.Dependency) bool {
 	return markerMentionsExtra(d.Markers)
 }

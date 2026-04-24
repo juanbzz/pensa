@@ -93,17 +93,15 @@ type Solver struct {
 	// Zero means "not contradicted". On backtrack to level L we drop
 	// entries with value > L — those contradictions depended on
 	// assignments that are now undone. Clauses contradicted at level
-	// 0 (from root-level constraints) persist permanently, matching
-	// Poetry's _contradicted_incompatibilities_by_level.
+	// 0 (from root-level constraints) persist permanently.
 	contradicted map[*Incompatibility]int
 	solution     *PartialSolution
 	priorities   map[string]int
 	// alreadyListed memoizes emitted base dependency clauses keyed by
 	// (pkg_range, dep_pkg, dep_constraint). Prevents re-emission when
-	// the solver revisits (pkg, v) via propagation or backtrack. Dart
-	// PubGrub's _alreadyListedDependencies analog. Required for R1
-	// (range-valued base clauses) to not explode the clause set with
-	// overlapping-range duplicates.
+	// the solver revisits (pkg, v) via propagation or backtrack —
+	// without it, range-valued base clauses explode into overlapping
+	// duplicates and propagation slows to a crawl.
 	alreadyListed map[string]struct{}
 }
 
@@ -317,9 +315,9 @@ func (s *Solver) resolveConflict(incompat *Incompatibility) (*Incompatibility, e
 		if previousSatisfierLevel < mostRecentSatisfier.DecisionLevel || mostRecentSatisfier.IsDecision() {
 			s.solution.Backtrack(previousSatisfierLevel)
 			// Selective clear: drop contradictions from levels above
-			// the backtrack target (Poetry's level-indexed pattern).
-			// Contradictions established at or below the target are
-			// still valid — no need to re-propagate them.
+			// the backtrack target. Contradictions established at or
+			// below the target are still valid — no need to
+			// re-propagate them.
 			s.clearContradictedAbove(previousSatisfierLevel)
 			if newIncompat {
 				s.addIncompatibility(incompat)
@@ -374,12 +372,12 @@ func (s *Solver) choosePackageVersion() (string, error) {
 	})
 
 	var chosen *version.Version
-	// R3: lockfile preference. When the provider advertises a preferred
+	// Lockfile preference: when the provider advertises a preferred
 	// version (typically the prior-run lock pin), try it before the
-	// newest-first scan. Keeps warm re-locks stable: if the pinned
-	// version still satisfies current constraints, reuse it instead of
-	// drifting to a newer release. Falls through when the preferred
-	// version is absent, yanked, or contradicted by current state.
+	// newest-first scan. Keeps warm re-locks stable — reuse the pin
+	// when still valid instead of drifting to a newer release. Falls
+	// through when the preferred version is absent, yanked, or
+	// contradicted by current state.
 	if pref, ok := s.provider.Preferred(pkg); ok {
 		for i := range versions {
 			if version.Compare(versions[i], pref) != 0 {
@@ -416,22 +414,20 @@ func (s *Solver) choosePackageVersion() (string, error) {
 		return "", fmt.Errorf("fetch dependencies for %s %s: %w", pkg, chosen, err)
 	}
 
-	// R1: range-valued base clauses. Widen chosenConstraint to the
-	// contiguous same-deps range around `chosen` via dependencyBounds.
-	// This prevents the solver from treating every picked version as
-	// an isolated singleton — when many versions share a dep, one
-	// learned clause via resolution covers them all. Dart PubGrub's
-	// incompatibilitiesFor equivalent.
+	// Widen chosenConstraint to the contiguous same-deps range around
+	// `chosen` via dependencyBounds. Without this the solver treats
+	// every picked version as an isolated singleton; widening means one
+	// learned clause via resolution covers every version in the range.
 	chosenConstraint := version.ExactVersion(*chosen)
 	if lo, hi, ok := s.dependencyBounds(pkg, *chosen, deps, versions); ok {
 		chosenConstraint = version.NewRange(&lo, &hi, true, true)
 	}
 
 	for _, dep := range deps {
-		// R1 memo: skip emission when an identical (pkg_range, dep_pkg,
+		// Skip emission when an identical (pkg_range, dep_pkg,
 		// dep_constraint) clause has already been added. Without this,
 		// every revisit of (pkg, v) emits duplicate clauses, tanking
-		// propagation. Dart's _alreadyListedDependencies equivalent.
+		// propagation.
 		depConstraintStr := "*"
 		if dep.Constraint != nil {
 			depConstraintStr = dep.Constraint.String()
@@ -466,11 +462,9 @@ func (s *Solver) choosePackageVersion() (string, error) {
 // the range degenerates to the singleton `chosen`, in which case the caller
 // should fall back to ExactVersion.
 //
-// The caller wraps (lo, hi) as a closed interval — so unenumerated versions
-// in (lo, hi) (e.g. on a custom index with version gaps) would also be
-// excluded. For the PyPI index this is benign because Versions() enumerates
-// completely. A future refinement could emit a Union of seen versions
-// instead of a continuous range to cover non-PyPI providers.
+// The caller wraps (lo, hi) as a closed interval: unenumerated versions in
+// (lo, hi) are also excluded. Safe for PyPI (Versions() enumerates fully);
+// custom indexes with version gaps are a known limitation.
 func (s *Solver) dependencyBounds(pkg string, chosen version.Version, deps []Dependency, versions []version.Version) (version.Version, version.Version, bool) {
 	idx := -1
 	for i := range versions {
@@ -573,12 +567,11 @@ func (s *Solver) positiveTermFor(pkg string) Term {
 //
 // Fanout = len(s.incompatibilities[pkg]) — the number of clauses
 // referencing the pkg. More clauses = more constraints already
-// narrowing the pkg = better candidate to decide next. This is a
-// cheap O(1) proxy for "how constrained is this package"; Dart's
-// Most-Constrained-Variable heuristic (count valid versions) gives
-// similar signal but costs O(versions) per call, which regressed
-// pgm 3x and lifeandhomes 30x in benchmarks (see the goetry-eos
-// Layer 3 experiment notes).
+// narrowing the pkg = better candidate to decide next. Cheap O(1)
+// proxy for "how constrained is this package"; a true
+// most-constrained-variable count (valid versions remaining) costs
+// O(versions) per call, which regressed larger corpora in
+// benchmarking.
 //
 // Name tiebreak is the final deterministic fallback — without it,
 // two pkgs with the same priority AND same fanout would pick based
