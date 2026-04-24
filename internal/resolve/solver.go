@@ -240,16 +240,23 @@ func (s *Solver) propagateIncompatibility(incompat *Incompatibility) propagateRe
 	return propagateResult{pkg: unsatisfied.Pkg}
 }
 
-// markContradicted records that `incompat` can't fire at the current
-// decision level or below. Used by propagate to skip already-handled
-// clauses. On backtrack to level L, clearContradictedAbove(L) drops
-// entries above L since those contradictions depended on assignments
-// that have been undone.
+// markContradicted records that `incompat` has been fully processed
+// at the current decision level — future propagation passes should
+// skip it until we backtrack past that level. Called from two
+// branches of propagateIncompatibility, both safely skippable:
+//
+//  1. Disjoint branch: a term is disjoint with the solution, so
+//     the clause cannot fire here.
+//  2. Unit-propagation branch: all-but-one term is satisfied and
+//     the remaining term has been derived. The clause has fired
+//     and can't yield new information at this level.
+//
+// On backtrack to level L, clearContradictedAbove(L) drops entries
+// recorded above L since those assumptions have been undone.
+// Stored level is clamped to a minimum of 1 so the zero value
+// remains the "not stored" sentinel.
 func (s *Solver) markContradicted(incompat *Incompatibility) {
 	level := s.solution.DecisionLevel()
-	// Level 0 is the most-permanent (pre-any-decision) mark — store
-	// as 1 so the "zero value = not contradicted" sentinel stays
-	// clean. We never backtrack below level 1 (root is kept).
 	if level < 1 {
 		level = 1
 	}
