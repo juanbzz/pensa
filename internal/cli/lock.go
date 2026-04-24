@@ -176,9 +176,12 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 		return fmt.Errorf("resolve: %w", err)
 	}
 
-	// Flush resolution cache to disk. Background goroutines may still be
-	// running — Flush writes whatever is in memory at this point. Remaining
-	// updates will land in next run's cache.
+	// Drain background prefetches before flushing the resolution cache
+	// so no in-flight fetch lands after Flush (losing the result) or
+	// races the cache writer.
+	baseProvider.WaitPrefetches()
+	prefetcher.WaitPrefetches()
+
 	if err := resCache.Flush(); err != nil {
 		newUI(w, false, false).Warning(fmt.Sprintf("flush resolution cache: %s", err))
 	}
@@ -222,6 +225,7 @@ type indexProvider struct {
 	client          *index.CachedClient
 	requestedExtras map[string][]string // normalized pkg name → requested extras
 	prefetchSem     chan struct{}       // bounds background prefetch concurrency
+	prefetchWG      sync.WaitGroup      // tracks in-flight prefetch goroutines so callers can drain before shutdown
 	requiresPython  version.Constraint  // project's requires-python, nil if unset
 	// rpOverlapCache memoizes pythonRangesOverlap results keyed on the raw
 	// package-level requires-python string. PyPI packages reuse a small set
@@ -362,13 +366,15 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 		})
 	}
 
-	// Background prefetch: warm the cache for discovered deps.
-	// These are intentionally fire-and-forget — they're best-effort cache
-	// warmers. Errors are ignored, and incomplete prefetches on fast exit
-	// are harmless (the cache is populated on the next run). Concurrency
-	// is bounded by prefetchSem.
+	// Background prefetch: warm the cache for discovered deps. Goroutines
+	// tracked by prefetchWG so the caller can drain before flushing the
+	// resolution cache — otherwise an in-flight prefetch can land after
+	// Flush and its result is lost (or worse, races the cache writer).
+	// Errors are ignored; concurrency is bounded by prefetchSem.
 	for _, d := range deps {
+		p.prefetchWG.Add(1)
 		go func(name string) {
+			defer p.prefetchWG.Done()
 			p.prefetchSem <- struct{}{}
 			defer func() { <-p.prefetchSem }()
 			p.client.GetPackageInfo(name)
@@ -376,6 +382,14 @@ func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve
 	}
 
 	return deps, nil
+}
+
+// WaitPrefetches blocks until every background prefetch goroutine
+// fired by Dependencies has returned. Callers invoke this before
+// flushing the resolution cache to guarantee in-flight fetches
+// aren't lost or racing the writer.
+func (p *indexProvider) WaitPrefetches() {
+	p.prefetchWG.Wait()
 }
 
 // Preferred: the base provider has no lockfile context. Preferences
@@ -601,9 +615,12 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 		return fmt.Errorf("resolve: %w", err)
 	}
 
-	// Flush resolution cache to disk. Background goroutines may still be
-	// running — Flush writes whatever is in memory at this point. Remaining
-	// updates will land in next run's cache.
+	// Drain background prefetches before flushing the resolution cache
+	// so no in-flight fetch lands after Flush (losing the result) or
+	// races the cache writer.
+	baseProvider.WaitPrefetches()
+	prefetcher.WaitPrefetches()
+
 	if err := resCache.Flush(); err != nil {
 		newUI(w, false, false).Warning(fmt.Sprintf("flush resolution cache: %s", err))
 	}

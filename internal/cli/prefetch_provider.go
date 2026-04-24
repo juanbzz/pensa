@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"sync"
+
 	"pensa.sh/pensa/internal/index"
 	"pensa.sh/pensa/internal/resolve"
 	"pensa.sh/pensa/pkg/version"
@@ -15,7 +17,8 @@ type prefetchProvider struct {
 	inner    resolve.Provider
 	client   *index.CachedClient
 	versions map[string][]version.Version // pkg → sorted versions (cached from Versions() calls)
-	sem      chan struct{}                 // bounds prefetch concurrency
+	sem      chan struct{}                // bounds prefetch concurrency
+	wg       sync.WaitGroup               // tracks in-flight speculative fetches so callers can drain before shutdown
 }
 
 const maxPrefetch = 10
@@ -79,10 +82,19 @@ func (p *prefetchProvider) prefetchNextVersions(pkg string, current version.Vers
 			break
 		}
 		count++
+		p.wg.Add(1)
 		go func(name string, ver version.Version) {
+			defer p.wg.Done()
 			p.sem <- struct{}{}
 			defer func() { <-p.sem }()
 			p.client.GetVersionDetail(name, ver)
 		}(pkg, v)
 	}
+}
+
+// WaitPrefetches blocks until every speculative prefetch goroutine
+// has returned. Callers invoke this before flushing the resolution
+// cache so no in-flight fetches race the writer.
+func (p *prefetchProvider) WaitPrefetches() {
+	p.wg.Wait()
 }
