@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+
 	"pensa.sh/pensa/internal/lockfile"
 	"pensa.sh/pensa/internal/resolve"
 	"pensa.sh/pensa/pkg/version"
@@ -49,15 +51,15 @@ func newLockedProvider(underlying resolve.Provider, lf *lockfile.LockFile, upgra
 	}
 }
 
-func (p *lockedProvider) Versions(pkg string) ([]version.Version, error) {
+func (p *lockedProvider) Versions(ctx context.Context, pkg string) ([]version.Version, error) {
 	// Pass through — the solver uses Preferred() to bias picks
 	// toward locked versions, rather than relying on slice order
 	// (which the solver re-sorts newest-first anyway).
-	return p.underlying.Versions(pkg)
+	return p.underlying.Versions(ctx, pkg)
 }
 
 // Preferred returns the locked version for pkg, if any.
-func (p *lockedProvider) Preferred(pkg string) (version.Version, bool) {
+func (p *lockedProvider) Preferred(ctx context.Context, pkg string) (version.Version, bool) {
 	normalized := normalizeName(pkg)
 	if p.upgradePackages[normalized] {
 		return version.Version{}, false
@@ -65,15 +67,15 @@ func (p *lockedProvider) Preferred(pkg string) (version.Version, bool) {
 	pin, ok := p.pinned[normalized]
 	if !ok {
 		// Fall through to any upstream preference.
-		return p.underlying.Preferred(pkg)
+		return p.underlying.Preferred(ctx, pkg)
 	}
 	return pin, true
 }
 
-func (p *lockedProvider) Dependencies(pkg string, ver version.Version) ([]resolve.Dependency, error) {
-	return p.underlying.Dependencies(pkg, ver)
+func (p *lockedProvider) Dependencies(ctx context.Context, pkg string, ver version.Version) ([]resolve.Dependency, error) {
+	return p.underlying.Dependencies(ctx, pkg, ver)
 }
 
-func (p *lockedProvider) DependenciesIfCached(pkg string, ver version.Version) ([]resolve.Dependency, bool) {
-	return p.underlying.DependenciesIfCached(pkg, ver)
+func (p *lockedProvider) DependenciesIfCached(ctx context.Context, pkg string, ver version.Version) ([]resolve.Dependency, bool) {
+	return p.underlying.DependenciesIfCached(ctx, pkg, ver)
 }

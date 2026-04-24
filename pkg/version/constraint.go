@@ -38,8 +38,8 @@ func IsSingleton(c Constraint) bool {
 // `python<4.0` means "we haven't tested Python 4", not "we know this
 // breaks on Python 4". Treating them as hard constraints causes PubGrub
 // to backtrack through many otherwise-valid configurations. See uv's
-// equivalent (https://nesbitt.io/2025/12/26/how-uv-got-so-fast.html) and
-// goetry-eos.1 for the full rationale.
+// equivalent (https://nesbitt.io/2025/12/26/how-uv-got-so-fast.html)
+// for the full rationale.
 func StripUpperBound(c Constraint) Constraint {
 	switch v := c.(type) {
 	case *anyConstraint, *emptyConstraint, *exactConstraint:
@@ -128,8 +128,7 @@ func (a *anyConstraint) Difference(other Constraint) Constraint {
 	}
 	// any minus a union = subtract each part iteratively. Without this,
 	// the generic fallback returns `a` unchanged, which is semantically
-	// wrong — missed by all prior callers until the property-test audit
-	// in goetry-eos / Layer 0.
+	// wrong — missed by all prior callers until the property-test audit.
 	if u, ok := other.(*Union); ok {
 		result := Constraint(a)
 		for _, part := range u.constraints {

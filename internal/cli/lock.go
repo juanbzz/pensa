@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -38,12 +39,13 @@ func newLockCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&upgradeAll, "upgrade", "U", false,
 		"Re-resolve all dependencies, ignoring the existing lock file")
-	cmd.Flags().StringSliceVarP(&upgradePackages, "upgrade-package", "P", nil,
+	cmd.Flags().StringArrayVarP(&upgradePackages, "upgrade-package", "P", nil,
 		"Upgrade the specified package, keeping others pinned (repeatable)")
 	return cmd
 }
 
 func runLock(cmd *cobra.Command, opts lockOptions) error {
+	ctx := cmd.Context()
 	out := uiFromCmd(cmd)
 	dir, err := os.Getwd()
 	if err != nil {
@@ -59,7 +61,7 @@ func runLock(cmd *cobra.Command, opts lockOptions) error {
 			out.UpToDate("Lock file is up to date.")
 			return nil
 		}
-		return runLockWorkspace(cmd.ErrOrStderr(), ws, opts)
+		return runLockWorkspace(ctx, cmd.ErrOrStderr(), ws, opts)
 	}
 
 	// Single project mode.
@@ -84,12 +86,12 @@ func runLock(cmd *cobra.Command, opts lockOptions) error {
 		return nil
 	}
 
-	return resolveAndLock(cmd.ErrOrStderr(), proj, pyprojectPath, opts)
+	return resolveAndLock(ctx, cmd.ErrOrStderr(), proj, pyprojectPath, opts)
 }
 
 // resolveAndLock runs the full resolve → lock pipeline.
 // Shared between `lock`, `add`, `remove`, and `update` commands.
-func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string, opts lockOptions) error {
+func resolveAndLock(ctx context.Context, w io.Writer, proj *pyproject.PyProject, pyprojectPath string, opts lockOptions) error {
 	start := time.Now()
 
 	cfg, err := config.New()
@@ -170,7 +172,7 @@ func resolveAndLock(w io.Writer, proj *pyproject.PyProject, pyprojectPath string
 	var result *resolve.SolverResult
 	if err := withSpinnerMsg(w, blue("Resolving dependencies..."), "", func() error {
 		var solveErr error
-		result, solveErr = solver.Solve()
+		result, solveErr = solver.Solve(ctx)
 		return solveErr
 	}); err != nil {
 		return fmt.Errorf("resolve: %w", err)
@@ -234,7 +236,11 @@ type indexProvider struct {
 	rpOverlapCache sync.Map // string → bool
 }
 
-func (p *indexProvider) Versions(pkg string) ([]version.Version, error) {
+func (p *indexProvider) Versions(_ context.Context, pkg string) ([]version.Version, error) {
+	// ctx currently unused: the underlying CachedClient API predates
+	// context propagation. Accepting ctx here keeps the resolver
+	// cancellable between provider calls and leaves the client-layer
+	// wiring as follow-up.
 	info, err := p.client.GetPackageInfo(pkg)
 	if err != nil {
 		return nil, err
@@ -331,7 +337,7 @@ func pythonRangesOverlap(projectPython version.Constraint, pkgRequiresPython str
 	return pkgConstraint.AllowsAll(projectPython)
 }
 
-func (p *indexProvider) Dependencies(pkg string, ver version.Version) ([]resolve.Dependency, error) {
+func (p *indexProvider) Dependencies(_ context.Context, pkg string, ver version.Version) ([]resolve.Dependency, error) {
 	detail, err := p.client.GetVersionDetail(pkg, ver)
 	if err != nil {
 		return nil, err
@@ -394,7 +400,7 @@ func (p *indexProvider) WaitPrefetches() {
 
 // Preferred: the base provider has no lockfile context. Preferences
 // come from the lockedProvider wrapper.
-func (p *indexProvider) Preferred(pkg string) (version.Version, bool) {
+func (p *indexProvider) Preferred(_ context.Context, _ string) (version.Version, bool) {
 	return version.Version{}, false
 }
 
@@ -403,7 +409,7 @@ func (p *indexProvider) Preferred(pkg string) (version.Version, bool) {
 // or disk-backed resolution cache). Never triggers a network fetch.
 // Used by the solver's range-batching to widen base clauses across
 // cached neighbors.
-func (p *indexProvider) DependenciesIfCached(pkg string, ver version.Version) ([]resolve.Dependency, bool) {
+func (p *indexProvider) DependenciesIfCached(_ context.Context, pkg string, ver version.Version) ([]resolve.Dependency, bool) {
 	detail, ok := p.client.VersionDetailIfCached(pkg, ver)
 	if !ok || detail == nil {
 		return nil, false
@@ -503,7 +509,7 @@ func permissiveEnv() pep508.Environment {
 }
 
 // runLockWorkspace locks all workspace members together into a single lock file.
-func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) error {
+func runLockWorkspace(ctx context.Context, w io.Writer, ws *workspace.Workspace, opts lockOptions) error {
 	start := time.Now()
 
 	wsUI := newUI(w, false, false)
@@ -609,7 +615,7 @@ func runLockWorkspace(w io.Writer, ws *workspace.Workspace, opts lockOptions) er
 	var result *resolve.SolverResult
 	if err := withSpinnerMsg(w, blue("Resolving dependencies..."), "", func() error {
 		var solveErr error
-		result, solveErr = solver.Solve()
+		result, solveErr = solver.Solve(ctx)
 		return solveErr
 	}); err != nil {
 		return fmt.Errorf("resolve: %w", err)

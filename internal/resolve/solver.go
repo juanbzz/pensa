@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -120,7 +121,7 @@ func NewSolver(provider Provider, root string, rootDeps []Dependency) *Solver {
 }
 
 // Solve finds a set of package versions satisfying all constraints.
-func (s *Solver) Solve() (*SolverResult, error) {
+func (s *Solver) Solve(ctx context.Context) (*SolverResult, error) {
 	s.addIncompatibility(&Incompatibility{
 		Terms: []Term{{Pkg: rootPkg, Constraint: version.AnyConstraint(), Positive: false}},
 		Cause: RootCause{},
@@ -143,10 +144,13 @@ func (s *Solver) Solve() (*SolverResult, error) {
 	}
 
 	for iterations := 0; ; iterations++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if iterations > 10000 {
 			return nil, fmt.Errorf("solver: exceeded 10000 iterations")
 		}
-		pkg, err := s.choosePackageVersion()
+		pkg, err := s.choosePackageVersion(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -361,7 +365,7 @@ func (s *Solver) resolveConflict(incompat *Incompatibility) (*Incompatibility, e
 	return nil, &SolveError{Incompatibility: incompat, Root: s.root}
 }
 
-func (s *Solver) choosePackageVersion() (string, error) {
+func (s *Solver) choosePackageVersion(ctx context.Context) (string, error) {
 	unsatisfied := s.solution.Unsatisfied()
 	if len(unsatisfied) == 0 {
 		return "", nil
@@ -369,7 +373,7 @@ func (s *Solver) choosePackageVersion() (string, error) {
 
 	pkg := s.chooseBest(unsatisfied)
 
-	versions, err := s.provider.Versions(pkg)
+	versions, err := s.provider.Versions(ctx, pkg)
 	if err != nil {
 		return "", fmt.Errorf("fetch versions for %s: %w", pkg, err)
 	}
@@ -385,7 +389,7 @@ func (s *Solver) choosePackageVersion() (string, error) {
 	// when still valid instead of drifting to a newer release. Falls
 	// through when the preferred version is absent, yanked, or
 	// contradicted by current state.
-	if pref, ok := s.provider.Preferred(pkg); ok {
+	if pref, ok := s.provider.Preferred(ctx, pkg); ok {
 		for i := range versions {
 			if version.Compare(versions[i], pref) != 0 {
 				continue
@@ -416,7 +420,7 @@ func (s *Solver) choosePackageVersion() (string, error) {
 		return pkg, nil
 	}
 
-	deps, err := s.provider.Dependencies(pkg, *chosen)
+	deps, err := s.provider.Dependencies(ctx, pkg, *chosen)
 	if err != nil {
 		return "", fmt.Errorf("fetch dependencies for %s %s: %w", pkg, chosen, err)
 	}
@@ -426,7 +430,7 @@ func (s *Solver) choosePackageVersion() (string, error) {
 	// every picked version as an isolated singleton; widening means one
 	// learned clause via resolution covers every version in the range.
 	chosenConstraint := version.ExactVersion(*chosen)
-	if lo, hi, ok := s.dependencyBounds(pkg, *chosen, deps, versions); ok {
+	if lo, hi, ok := s.dependencyBounds(ctx, pkg, *chosen, deps, versions); ok {
 		chosenConstraint = version.NewRange(&lo, &hi, true, true)
 	}
 
@@ -472,7 +476,7 @@ func (s *Solver) choosePackageVersion() (string, error) {
 // The caller wraps (lo, hi) as a closed interval: unenumerated versions in
 // (lo, hi) are also excluded. Safe for PyPI (Versions() enumerates fully);
 // custom indexes with version gaps are a known limitation.
-func (s *Solver) dependencyBounds(pkg string, chosen version.Version, deps []Dependency, versions []version.Version) (version.Version, version.Version, bool) {
+func (s *Solver) dependencyBounds(ctx context.Context, pkg string, chosen version.Version, deps []Dependency, versions []version.Version) (version.Version, version.Version, bool) {
 	idx := -1
 	for i := range versions {
 		if version.Compare(versions[i], chosen) == 0 {
@@ -489,14 +493,14 @@ func (s *Solver) dependencyBounds(pkg string, chosen version.Version, deps []Dep
 	// versions is sorted newest-first, so lower indices are higher versions.
 	// Walk up (toward higher versions).
 	for i := idx - 1; i >= 0; i-- {
-		if !s.canExtendBound(pkg, versions[i], deps) {
+		if !s.canExtendBound(ctx, pkg, versions[i], deps) {
 			break
 		}
 		hi = versions[i]
 	}
 	// Walk down (toward lower versions).
 	for i := idx + 1; i < len(versions); i++ {
-		if !s.canExtendBound(pkg, versions[i], deps) {
+		if !s.canExtendBound(ctx, pkg, versions[i], deps) {
 			break
 		}
 		lo = versions[i]
@@ -519,12 +523,12 @@ func (s *Solver) dependencyBounds(pkg string, chosen version.Version, deps []Dep
 // fetches while still widening as the cache warms. Versions the
 // solver fetches on its own earlier picks accumulate in the cache,
 // so successive widening walks reach further.
-func (s *Solver) canExtendBound(pkg string, neighbor version.Version, deps []Dependency) bool {
+func (s *Solver) canExtendBound(ctx context.Context, pkg string, neighbor version.Version, deps []Dependency) bool {
 	rel := s.solution.Relation(Term{Pkg: pkg, Constraint: version.ExactVersion(neighbor), Positive: true})
 	if rel == Disjoint {
 		return false
 	}
-	nDeps, cached := s.provider.DependenciesIfCached(pkg, neighbor)
+	nDeps, cached := s.provider.DependenciesIfCached(ctx, pkg, neighbor)
 	if !cached {
 		return false
 	}

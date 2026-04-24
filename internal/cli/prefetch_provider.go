@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"sync"
 
 	"pensa.sh/pensa/internal/index"
@@ -32,8 +33,8 @@ func newPrefetchProvider(inner resolve.Provider, client *index.CachedClient, con
 	}
 }
 
-func (p *prefetchProvider) Versions(pkg string) ([]version.Version, error) {
-	vs, err := p.inner.Versions(pkg)
+func (p *prefetchProvider) Versions(ctx context.Context, pkg string) ([]version.Version, error) {
+	vs, err := p.inner.Versions(ctx, pkg)
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +42,8 @@ func (p *prefetchProvider) Versions(pkg string) ([]version.Version, error) {
 	return vs, nil
 }
 
-func (p *prefetchProvider) Dependencies(pkg string, ver version.Version) ([]resolve.Dependency, error) {
-	deps, err := p.inner.Dependencies(pkg, ver)
+func (p *prefetchProvider) Dependencies(ctx context.Context, pkg string, ver version.Version) ([]resolve.Dependency, error) {
+	deps, err := p.inner.Dependencies(ctx, pkg, ver)
 	if err != nil {
 		return nil, err
 	}
@@ -52,12 +53,12 @@ func (p *prefetchProvider) Dependencies(pkg string, ver version.Version) ([]reso
 	return deps, nil
 }
 
-func (p *prefetchProvider) DependenciesIfCached(pkg string, ver version.Version) ([]resolve.Dependency, bool) {
-	return p.inner.DependenciesIfCached(pkg, ver)
+func (p *prefetchProvider) DependenciesIfCached(ctx context.Context, pkg string, ver version.Version) ([]resolve.Dependency, bool) {
+	return p.inner.DependenciesIfCached(ctx, pkg, ver)
 }
 
-func (p *prefetchProvider) Preferred(pkg string) (version.Version, bool) {
-	return p.inner.Preferred(pkg)
+func (p *prefetchProvider) Preferred(ctx context.Context, pkg string) (version.Version, bool) {
+	return p.inner.Preferred(ctx, pkg)
 }
 
 // prefetchNextVersions fires background GetVersionDetail calls for the next

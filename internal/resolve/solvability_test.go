@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -27,7 +28,7 @@ import (
 func assertSolved(t *testing.T, provider *mockProvider, roots []Dependency) map[string]version.Version {
 	t.Helper()
 	solver := NewSolver(provider, "proj", roots)
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	if err != nil {
 		t.Fatalf("expected solution, got error: %v", err)
 	}

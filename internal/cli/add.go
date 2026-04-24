@@ -121,7 +121,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if member != nil {
 			member.Project, _ = pyproject.ReadPyProject(pyprojectPath)
 		}
-		if err := runLockWorkspace(os.Stderr, ws, lockOptions{}); err != nil {
+		if err := runLockWorkspace(cmd.Context(), os.Stderr, ws, lockOptions{}); err != nil {
 			return err
 		}
 	} else {
@@ -129,7 +129,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("re-read pyproject.toml: %w", err)
 		}
-		if err := resolveAndLock(os.Stderr, proj, pyprojectPath, lockOptions{}); err != nil {
+		if err := resolveAndLock(cmd.Context(), os.Stderr, proj, pyprojectPath, lockOptions{}); err != nil {
 			return err
 		}
 	}

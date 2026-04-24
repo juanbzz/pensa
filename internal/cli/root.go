@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
@@ -80,6 +82,13 @@ Use "{{flagStyle .CommandPath}} [command] --help" for more information about a c
 
 func Execute() error {
 	return newRootCmd().Execute()
+}
+
+// ExecuteContext runs the root command with a parent context so
+// SIGINT / SIGTERM at the binary boundary propagates into the solver
+// and other long-running operations via cmd.Context().
+func ExecuteContext(ctx context.Context) error {
+	return newRootCmd().ExecuteContext(ctx)
 }
 
 // uiFromCmd creates a ui instance from cobra command flags + config.

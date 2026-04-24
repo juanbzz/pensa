@@ -56,7 +56,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err := resolveAndLock(os.Stderr, proj, pyprojectPath, opts); err != nil {
+	if err := resolveAndLock(cmd.Context(), os.Stderr, proj, pyprojectPath, opts); err != nil {
 		return err
 	}
 

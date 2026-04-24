@@ -1,6 +1,8 @@
 package resolve
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -25,7 +27,7 @@ type mockProvider struct {
 	preferred map[string]version.Version
 }
 
-func (m *mockProvider) Versions(pkg string) ([]version.Version, error) {
+func (m *mockProvider) Versions(_ context.Context, pkg string) ([]version.Version, error) {
 	pkgs, ok := m.packages[pkg]
 	if !ok {
 		return nil, nil
@@ -37,7 +39,7 @@ func (m *mockProvider) Versions(pkg string) ([]version.Version, error) {
 	return versions, nil
 }
 
-func (m *mockProvider) Dependencies(pkg string, ver version.Version) ([]Dependency, error) {
+func (m *mockProvider) Dependencies(_ context.Context, pkg string, ver version.Version) ([]Dependency, error) {
 	pkgs, ok := m.packages[pkg]
 	if !ok {
 		return nil, fmt.Errorf("package %s not found", pkg)
@@ -53,8 +55,8 @@ func (m *mockProvider) Dependencies(pkg string, ver version.Version) ([]Dependen
 // DependenciesIfCached: mocks have no separate cache layer, so
 // everything they know is "cached". Return deps as if all were
 // already fetched.
-func (m *mockProvider) DependenciesIfCached(pkg string, ver version.Version) ([]Dependency, bool) {
-	deps, err := m.Dependencies(pkg, ver)
+func (m *mockProvider) DependenciesIfCached(ctx context.Context, pkg string, ver version.Version) ([]Dependency, bool) {
+	deps, err := m.Dependencies(ctx, pkg, ver)
 	if err != nil {
 		return nil, false
 	}
@@ -63,7 +65,7 @@ func (m *mockProvider) DependenciesIfCached(pkg string, ver version.Version) ([]
 
 // Preferred returns a version from the optional preferred map. Tests
 // populate it to drive the lockfile-preference path.
-func (m *mockProvider) Preferred(pkg string) (version.Version, bool) {
+func (m *mockProvider) Preferred(_ context.Context, pkg string) (version.Version, bool) {
 	v, ok := m.preferred[pkg]
 	return v, ok
 }
@@ -105,7 +107,7 @@ func TestSolver_SingleDependency(t *testing.T) {
 		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
 	})
 
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	assert.NoErr(err)
 
 	v, ok := result.Decisions["a"]
@@ -132,7 +134,7 @@ func TestSolver_TwoDependencies(t *testing.T) {
 		{Pkg: "b", Constraint: mustParseConstraint(t, "^2.0")},
 	})
 
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	assert.NoErr(err)
 	assert.Equal(len(result.Decisions), 2)
 	assert.Equal(result.Decisions["a"].String(), "1.0.0")
@@ -160,7 +162,7 @@ func TestSolver_TransitiveDependency(t *testing.T) {
 		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
 	})
 
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	assert.NoErr(err)
 	assert.Equal(len(result.Decisions), 2)
 	assert.Equal(result.Decisions["a"].String(), "1.0.0")
@@ -183,7 +185,7 @@ func TestSolver_NoMatchingVersions(t *testing.T) {
 		{Pkg: "a", Constraint: mustParseConstraint(t, ">=99.0")},
 	})
 
-	_, err := solver.Solve()
+	_, err := solver.Solve(context.Background())
 	assert.True(err != nil)
 }
 
@@ -204,7 +206,7 @@ func TestSolver_PrefersNewestVersion(t *testing.T) {
 		{Pkg: "a", Constraint: mustParseConstraint(t, ">=1.0,<2.0")},
 	})
 
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	assert.NoErr(err)
 	assert.Equal(result.Decisions["a"].String(), "1.2.0")
 }
@@ -245,7 +247,7 @@ func TestSolver_Backtracking(t *testing.T) {
 		{Pkg: "b", Constraint: mustParseConstraint(t, "^1.0")},
 	})
 
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	assert.NoErr(err)
 	assert.Equal(result.Decisions["a"].String(), "1.0.0")
 	assert.Equal(result.Decisions["c"].Major(), 1)
@@ -283,7 +285,7 @@ func TestSolver_Conflict(t *testing.T) {
 
 	assert := is.New(t)
 
-	_, err := solver.Solve()
+	_, err := solver.Solve(context.Background())
 	assert.True(err != nil)
 
 	msg := err.Error()
@@ -318,7 +320,7 @@ func TestSolver_ConflictShowsProjectName(t *testing.T) {
 		{Pkg: "b", Constraint: mustParseConstraint(t, "^1.0")},
 	})
 
-	_, err := solver.Solve()
+	_, err := solver.Solve(context.Background())
 	assert.True(err != nil)
 
 	msg := err.Error()
@@ -335,7 +337,7 @@ func TestSolver_NoDependencies(t *testing.T) {
 
 	solver := NewSolver(provider, "myproject", nil)
 
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	assert.NoErr(err)
 	assert.Equal(len(result.Decisions), 0)
 }
@@ -382,7 +384,7 @@ func TestSolver_ConflictingTransitiveDepsNoPanic(t *testing.T) {
 	})
 
 	// Should not panic — either resolves or returns an error.
-	_, err := solver.Solve()
+	_, err := solver.Solve(context.Background())
 	if err != nil {
 		msg := err.Error()
 		assert.True(strings.Contains(msg, "version solving failed"))
@@ -437,7 +439,7 @@ func TestSolver_ManyVersionsSharedConflict(t *testing.T) {
 		{Pkg: "b", Constraint: mustParseConstraint(t, "^1.0")},
 	})
 
-	_, err := solver.Solve()
+	_, err := solver.Solve(context.Background())
 	// Unsolvable — every version of a conflicts with b. Guard nil before
 	// calling Error() so a regression returning nil fails with a clear
 	// message instead of a nil-pointer panic.
@@ -473,7 +475,7 @@ func TestSolver_PreferredPicksPinnedOverNewest(t *testing.T) {
 		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
 	})
 
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	assert.NoErr(err)
 	assert.Equal(result.Decisions["a"].String(), "1.1.0")
 }
@@ -502,7 +504,7 @@ func TestSolver_PreferredIgnoredWhenUnsatisfiable(t *testing.T) {
 		{Pkg: "a", Constraint: mustParseConstraint(t, "^2.0")},
 	})
 
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	assert.NoErr(err)
 	assert.Equal(result.Decisions["a"].String(), "2.5.0")
 }
@@ -530,7 +532,32 @@ func TestSolver_PreferredMissingFromIndex(t *testing.T) {
 		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
 	})
 
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	assert.NoErr(err)
 	assert.Equal(result.Decisions["a"].String(), "1.2.0")
+}
+
+// TestSolver_ContextCancelled confirms Solve honors ctx cancellation:
+// on a canceled context the main loop returns promptly with ctx.Err()
+// rather than completing the solve.
+func TestSolver_ContextCancelled(t *testing.T) {
+	assert := is.New(t)
+
+	provider := &mockProvider{
+		packages: map[string][]mockPackage{
+			"a": {
+				{ver: mustParseVersion(t, "1.0.0"), deps: nil},
+			},
+		},
+	}
+
+	solver := NewSolver(provider, "myproject", []Dependency{
+		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := solver.Solve(ctx)
+	assert.True(errors.Is(err, context.Canceled))
 }

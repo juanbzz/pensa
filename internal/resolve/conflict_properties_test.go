@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -55,7 +56,7 @@ func TestResolveConflict_TriangleBacktrack(t *testing.T) {
 	solver := NewSolver(provider, "proj", []Dependency{
 		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
 	})
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	if err != nil {
 		t.Fatalf("expected solution, got error: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestResolveConflict_DiamondUnsolvable(t *testing.T) {
 		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
 		{Pkg: "b", Constraint: mustParseConstraint(t, "^1.0")},
 	})
-	_, err := solver.Solve()
+	_, err := solver.Solve(context.Background())
 	if err == nil {
 		t.Error("expected conflict error on diamond with incompatible c constraints")
 	}
@@ -124,7 +125,7 @@ func TestResolveConflict_DeepBacktrack(t *testing.T) {
 	solver := NewSolver(provider, "proj", []Dependency{
 		{Pkg: "a", Constraint: mustParseConstraint(t, ">=1.0,<=5.0")},
 	})
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	if err != nil {
 		t.Fatalf("expected solution, got error: %v", err)
 	}
@@ -170,7 +171,7 @@ func TestResolveConflict_TransitiveChain(t *testing.T) {
 	solver := NewSolver(provider, "proj", []Dependency{
 		{Pkg: "a", Constraint: mustParseConstraint(t, ">=1.0")},
 	})
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	if err != nil {
 		t.Fatalf("expected solution, got error: %v", err)
 	}
@@ -211,7 +212,7 @@ func TestResolveConflict_MultipleValid(t *testing.T) {
 		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
 		{Pkg: "b", Constraint: mustParseConstraint(t, "^1.0")},
 	})
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	if err != nil {
 		t.Fatalf("expected solution, got error: %v", err)
 	}
@@ -337,7 +338,7 @@ func TestResolveConflict_ConsistencyInvariant(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			provider := &mockProvider{packages: tc.pkgs}
 			solver := NewSolver(provider, "proj", tc.roots)
-			result, err := solver.Solve()
+			result, err := solver.Solve(context.Background())
 			if err != nil {
 				if !tc.wantErr {
 					t.Fatalf("unexpected error: %v", err)
@@ -362,7 +363,7 @@ func TestResolveConflict_AttemptsReflectBacktracks(t *testing.T) {
 	solver := NewSolver(provider, "proj", []Dependency{
 		{Pkg: "a", Constraint: mustParseConstraint(t, "^1.0")},
 	})
-	result, err := solver.Solve()
+	result, err := solver.Solve(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +390,7 @@ func TestResolveConflict_AttemptsReflectBacktracks(t *testing.T) {
 	solver2 := NewSolver(provider2, "proj", []Dependency{
 		{Pkg: "a", Constraint: mustParseConstraint(t, ">=1.0,<=5.0")},
 	})
-	result2, err := solver2.Solve()
+	result2, err := solver2.Solve(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
