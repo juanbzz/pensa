@@ -23,29 +23,43 @@ import (
 )
 
 func newLockCmd() *cobra.Command {
-	return &cobra.Command{
+	var upgradeAll bool
+	var upgradePackages []string
+	cmd := &cobra.Command{
 		Use:   "lock",
 		Short: "Lock the project dependencies",
 		Long:  "Reads pyproject.toml, resolves all dependencies, and writes poetry.lock.",
-		RunE:  runLock,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLock(cmd, lockOptions{
+				upgrade:         upgradeAll,
+				upgradePackages: upgradePackages,
+			})
+		},
 	}
+	cmd.Flags().BoolVarP(&upgradeAll, "upgrade", "U", false,
+		"Re-resolve all dependencies, ignoring the existing lock file")
+	cmd.Flags().StringSliceVarP(&upgradePackages, "upgrade-package", "P", nil,
+		"Upgrade the specified package, keeping others pinned (repeatable)")
+	return cmd
 }
 
-func runLock(cmd *cobra.Command, args []string) error {
+func runLock(cmd *cobra.Command, opts lockOptions) error {
 	out := uiFromCmd(cmd)
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
+	skipFastPath := opts.upgrade || len(opts.upgradePackages) > 0
+
 	// Check for workspace.
 	ws, _ := workspace.Discover(dir)
 	if ws != nil {
-		if lockCurrentWorkspace(ws) {
+		if !skipFastPath && lockCurrentWorkspace(ws) {
 			out.UpToDate("Lock file is up to date.")
 			return nil
 		}
-		return runLockWorkspace(cmd.ErrOrStderr(), ws, lockOptions{})
+		return runLockWorkspace(cmd.ErrOrStderr(), ws, opts)
 	}
 
 	// Single project mode.
@@ -65,13 +79,12 @@ func runLock(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Skip resolution if lock file is current.
-	if lockCurrent(pyprojectPath, dir) {
+	if !skipFastPath && lockCurrent(pyprojectPath, dir) {
 		out.UpToDate("Lock file is up to date.")
 		return nil
 	}
 
-	return resolveAndLock(cmd.ErrOrStderr(), proj, pyprojectPath, lockOptions{})
+	return resolveAndLock(cmd.ErrOrStderr(), proj, pyprojectPath, opts)
 }
 
 // resolveAndLock runs the full resolve → lock pipeline.

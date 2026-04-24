@@ -136,6 +136,76 @@ build-backend = "poetry.core.masonry.api"
 	}
 }
 
+func TestLockIntegration_UpgradeFlagsBypassFastPath(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	os.WriteFile("pyproject.toml", []byte(`
+[project]
+name = "test-project"
+version = "0.1.0"
+requires-python = ">=3.8"
+dependencies = [
+    "certifi>=2023.0.0",
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+`), 0644)
+
+	// First run: populate the lock.
+	cmd := newRootCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"lock"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("initial lock failed: %v", err)
+	}
+
+	// Second run: no flag → hits up-to-date fast path.
+	cmd = newRootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"lock"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("repeat lock failed: %v", err)
+	}
+	if !strings.Contains(buf.String(), "up to date") {
+		t.Errorf("expected up-to-date message without --upgrade, got: %s", buf.String())
+	}
+
+	// Third run: --upgrade → must re-resolve, not hit the fast path.
+	cmd = newRootCmd()
+	buf = new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"lock", "--upgrade"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("upgrade lock failed: %v", err)
+	}
+	if strings.Contains(buf.String(), "up to date") {
+		t.Errorf("expected resolver run with --upgrade, got up-to-date: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "Resolved") {
+		t.Errorf("expected 'Resolved N packages' with --upgrade, got: %s", buf.String())
+	}
+
+	// Fourth run: --upgrade-package certifi → also bypasses fast path.
+	cmd = newRootCmd()
+	buf = new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"lock", "--upgrade-package", "certifi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("upgrade-package lock failed: %v", err)
+	}
+	if strings.Contains(buf.String(), "up to date") {
+		t.Errorf("expected resolver run with --upgrade-package, got up-to-date: %s", buf.String())
+	}
+}
+
 func TestLockIntegration_PoetryFormat(t *testing.T) {
 	dir := t.TempDir()
 	chdir(t, dir)
