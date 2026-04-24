@@ -89,6 +89,8 @@ func mustParseConstraint(t *testing.T, s string) version.Constraint {
 // --- Tests ---
 
 func TestSolver_SingleDependency(t *testing.T) {
+	assert := is.New(t)
+
 	provider := &mockProvider{
 		packages: map[string][]mockPackage{
 			"a": {
@@ -104,18 +106,16 @@ func TestSolver_SingleDependency(t *testing.T) {
 	})
 
 	result, err := solver.Solve()
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoErr(err)
 
-	if v, ok := result.Decisions["a"]; !ok {
-		t.Error("expected decision for 'a'")
-	} else if v.String() != "1.5.0" {
-		t.Errorf("a = %s, want 1.5.0", v)
-	}
+	v, ok := result.Decisions["a"]
+	assert.True(ok)
+	assert.Equal(v.String(), "1.5.0")
 }
 
 func TestSolver_TwoDependencies(t *testing.T) {
+	assert := is.New(t)
+
 	provider := &mockProvider{
 		packages: map[string][]mockPackage{
 			"a": {
@@ -133,22 +133,15 @@ func TestSolver_TwoDependencies(t *testing.T) {
 	})
 
 	result, err := solver.Solve()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(result.Decisions) != 2 {
-		t.Fatalf("decisions = %d, want 2", len(result.Decisions))
-	}
-	if result.Decisions["a"].String() != "1.0.0" {
-		t.Errorf("a = %s", result.Decisions["a"])
-	}
-	if result.Decisions["b"].String() != "2.0.0" {
-		t.Errorf("b = %s", result.Decisions["b"])
-	}
+	assert.NoErr(err)
+	assert.Equal(len(result.Decisions), 2)
+	assert.Equal(result.Decisions["a"].String(), "1.0.0")
+	assert.Equal(result.Decisions["b"].String(), "2.0.0")
 }
 
 func TestSolver_TransitiveDependency(t *testing.T) {
+	assert := is.New(t)
+
 	provider := &mockProvider{
 		packages: map[string][]mockPackage{
 			"a": {
@@ -168,22 +161,16 @@ func TestSolver_TransitiveDependency(t *testing.T) {
 	})
 
 	result, err := solver.Solve()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(result.Decisions) != 2 {
-		t.Fatalf("decisions = %d, want 2", len(result.Decisions))
-	}
-	if result.Decisions["a"].String() != "1.0.0" {
-		t.Errorf("a = %s", result.Decisions["a"])
-	}
-	if _, ok := result.Decisions["b"]; !ok {
-		t.Error("expected decision for 'b'")
-	}
+	assert.NoErr(err)
+	assert.Equal(len(result.Decisions), 2)
+	assert.Equal(result.Decisions["a"].String(), "1.0.0")
+	_, ok := result.Decisions["b"]
+	assert.True(ok)
 }
 
 func TestSolver_NoMatchingVersions(t *testing.T) {
+	assert := is.New(t)
+
 	provider := &mockProvider{
 		packages: map[string][]mockPackage{
 			"a": {
@@ -197,12 +184,12 @@ func TestSolver_NoMatchingVersions(t *testing.T) {
 	})
 
 	_, err := solver.Solve()
-	if err == nil {
-		t.Error("expected error for no matching versions")
-	}
+	assert.True(err != nil)
 }
 
 func TestSolver_PrefersNewestVersion(t *testing.T) {
+	assert := is.New(t)
+
 	provider := &mockProvider{
 		packages: map[string][]mockPackage{
 			"a": {
@@ -218,16 +205,13 @@ func TestSolver_PrefersNewestVersion(t *testing.T) {
 	})
 
 	result, err := solver.Solve()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if result.Decisions["a"].String() != "1.2.0" {
-		t.Errorf("a = %s, want 1.2.0 (newest)", result.Decisions["a"])
-	}
+	assert.NoErr(err)
+	assert.Equal(result.Decisions["a"].String(), "1.2.0")
 }
 
 func TestSolver_Backtracking(t *testing.T) {
+	assert := is.New(t)
+
 	// root → a ^1.0, b ^1.0
 	// a 1.5 → c ^2.0
 	// a 1.0 → c ^1.0
@@ -262,16 +246,9 @@ func TestSolver_Backtracking(t *testing.T) {
 	})
 
 	result, err := solver.Solve()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if result.Decisions["a"].String() != "1.0.0" {
-		t.Errorf("a = %s, want 1.0.0 (backtracked)", result.Decisions["a"])
-	}
-	if v := result.Decisions["c"]; v.Major() != 1 {
-		t.Errorf("c = %s, want 1.x", v)
-	}
+	assert.NoErr(err)
+	assert.Equal(result.Decisions["a"].String(), "1.0.0")
+	assert.Equal(result.Decisions["c"].Major(), 1)
 }
 
 func TestSolver_Conflict(t *testing.T) {
@@ -350,6 +327,8 @@ func TestSolver_ConflictShowsProjectName(t *testing.T) {
 }
 
 func TestSolver_NoDependencies(t *testing.T) {
+	assert := is.New(t)
+
 	provider := &mockProvider{
 		packages: map[string][]mockPackage{},
 	}
@@ -357,13 +336,8 @@ func TestSolver_NoDependencies(t *testing.T) {
 	solver := NewSolver(provider, "myproject", nil)
 
 	result, err := solver.Solve()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(result.Decisions) != 0 {
-		t.Errorf("decisions = %d, want 0", len(result.Decisions))
-	}
+	assert.NoErr(err)
+	assert.Equal(len(result.Decisions), 0)
 }
 
 func TestSolver_ConflictingTransitiveDepsNoPanic(t *testing.T) {
@@ -467,9 +441,7 @@ func TestSolver_ManyVersionsSharedConflict(t *testing.T) {
 	// Unsolvable — every version of a conflicts with b. Guard nil before
 	// calling Error() so a regression returning nil fails with a clear
 	// message instead of a nil-pointer panic.
-	if err == nil {
-		t.Fatal("expected solver error, got nil")
-	}
+	assert.True(err != nil)
 
 	// The solver must NOT blow through the iteration cap. If the fix is
 	// in place, conflict resolution generalizes over a's versions and this
