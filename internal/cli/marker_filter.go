@@ -82,46 +82,53 @@ func pythonSamplePoints(pyReq version.Constraint) []string {
 }
 
 // pythonIntegerBounds extracts the integer minor-version bounds of a
-// Python 3.x range constraint. Returns (lo, hi, true) when the
-// constraint is a simple Range over Python 3.x with both bounds
-// concrete; otherwise (_, _, false) signalling the caller should fall
-// back to a default sweep.
+// Python 3.x requires-python range. Returns (lo, hi, true) for the
+// simple Range cases real pyproject.toml files produce (`>=3.11`,
+// `>=3.11,<4`, `^3.10`, `~=3.11`, etc.); returns (_, _, false) for
+// anything else (Union, exact pin, Any, Empty) and the caller falls
+// back to a default sweep across 3.0–3.99.
+//
+// The type assertion against *version.Range is deliberate: the
+// Constraint interface has no bounds accessor, and the requires-python
+// values in practice are always Ranges. Future Constraint
+// implementations would fall through to the safe default — keeping
+// more deps than strictly necessary, never dropping valid ones.
 func pythonIntegerBounds(c version.Constraint) (int, int, bool) {
 	r, ok := c.(*version.Range)
 	if !ok {
 		return 0, 0, false
 	}
-	lo, hi := r.Min(), r.Max()
-	if lo == nil || hi == nil {
+	lo := r.Min()
+	if lo == nil {
 		return 0, 0, false
 	}
 	loRel := lo.Release()
-	hiRel := hi.Release()
-	if len(loRel) < 2 || len(hiRel) < 1 {
-		return 0, 0, false
-	}
-	if loRel[0] != 3 || hiRel[0] < 3 {
+	if len(loRel) < 2 || loRel[0] != 3 {
 		return 0, 0, false
 	}
 	loMinor := loRel[1]
 	if !r.IncludeMin() {
 		loMinor++
 	}
-	var hiMinor int
-	if hiRel[0] > 3 {
-		// Upper bound is 4.x or higher — treat as unbounded within 3.x.
-		hiMinor = 99
-	} else {
-		if len(hiRel) < 2 {
-			// Bare "3" without a minor — treat as unbounded.
-			hiMinor = 99
-		} else {
+
+	hiMinor := 99
+	if hi := r.Max(); hi != nil {
+		hiRel := hi.Release()
+		switch {
+		case len(hiRel) < 1 || hiRel[0] < 3:
+			return 0, 0, false
+		case hiRel[0] > 3:
+			// Upper bound is 4.x or higher — unbounded within 3.x.
+		case len(hiRel) < 2:
+			// Bare "3" — unbounded within 3.x.
+		default:
 			hiMinor = hiRel[1]
 			if !r.IncludeMax() && hiRel[1] > 0 {
 				hiMinor--
 			}
 		}
 	}
+
 	if loMinor > hiMinor {
 		return 0, 0, false
 	}

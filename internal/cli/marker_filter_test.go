@@ -121,3 +121,30 @@ func TestMarkerKeepsDep_NilRequiresPython(t *testing.T) {
 	m := mustParseMarker(t, `python_version < "3.7"`)
 	assert.True(markerKeepsDep(m, nil))
 }
+
+// Projects with no upper bound (`>=3.11`) are the most common
+// requires-python shape in the wild; must still filter out-of-range
+// markers.
+func TestMarkerKeepsDep_UnboundedUpper(t *testing.T) {
+	assert := is.New(t)
+	pyReq := mustParseRequiresPython(t, ">=3.11")
+
+	// Outside range — must drop.
+	m := mustParseMarker(t, `python_version < "3.7"`)
+	assert.True(!markerKeepsDep(m, pyReq))
+
+	// In range — must keep.
+	m = mustParseMarker(t, `python_version >= "3.11"`)
+	assert.True(markerKeepsDep(m, pyReq))
+}
+
+// Caret and tilde ranges (`^3.10`, `~=3.11`) are common in Poetry-
+// style pyprojects. Same filtering expected as explicit ranges.
+func TestMarkerKeepsDep_CaretAndTildeRanges(t *testing.T) {
+	assert := is.New(t)
+
+	m := mustParseMarker(t, `python_version < "3.7"`)
+
+	assert.True(!markerKeepsDep(m, mustParseRequiresPython(t, "^3.10")))
+	assert.True(!markerKeepsDep(m, mustParseRequiresPython(t, "~=3.11")))
+}
