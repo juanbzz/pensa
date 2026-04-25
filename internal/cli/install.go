@@ -218,21 +218,35 @@ func compatibleWithPython(pkg lockfile.LockedPackage, py *python.PythonInfo) boo
 		}
 	}
 
-	// Check if any wheel is compatible with current CPython.
-	if !hasCompatibleWheel(pkg.Files, py) {
+	// Check that we have at least one installable artifact for this platform.
+	if !canInstallOnPlatform(pkg.Files, py) {
 		return false
 	}
 
 	return true
 }
 
-// hasCompatibleWheel checks if at least one wheel in the file list matches
-// the current Python version and platform. Returns true if no wheels exist (sdist-only).
-func hasCompatibleWheel(files []lockfile.PackageFile, py *python.PythonInfo) bool {
+// canInstallOnPlatform reports whether a package has any artifact we can
+// use on the current platform: a wheel whose tags match, or a source
+// distribution we can build. Returns false only when the lock lists
+// wheels that all target other platforms AND no sdist is available
+// (e.g. pywin32 on macOS) — those packages are legitimately skipped at
+// install time.
+//
+// Returning true for sdist-only or sdist-plus-incompatible-wheel cases
+// lets the installer attempt buildFromSdist and surface any real build
+// failure (missing compiler, missing system library) as an actionable
+// error, rather than a silent omission.
+func canInstallOnPlatform(files []lockfile.PackageFile, py *python.PythonInfo) bool {
 	cpTag := fmt.Sprintf("cp%d%d", py.Major, py.Minor)
 	hasWheel := false
+	hasSdist := false
 
 	for _, f := range files {
+		if strings.HasSuffix(f.File, ".tar.gz") || strings.HasSuffix(f.File, ".zip") {
+			hasSdist = true
+			continue
+		}
 		if !strings.HasSuffix(f.File, ".whl") {
 			continue
 		}
@@ -256,8 +270,10 @@ func hasCompatibleWheel(files []lockfile.PackageFile, py *python.PythonInfo) boo
 		return true
 	}
 
-	// No wheels at all → sdist-only package, allow it.
-	return !hasWheel
+	// No matching wheel. Fall back to sdist if we have one; otherwise
+	// accept an empty file list (downstream will fail with a clear
+	// "no sdist found for X" error instead of silently skipping).
+	return hasSdist || !hasWheel
 }
 
 // wheelMatchesPlatform checks if a wheel filename is compatible with the
