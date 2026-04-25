@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -12,9 +13,14 @@ import (
 	"pensa.sh/pensa/internal/workspace"
 )
 
-// normalizeName lowercases and replaces underscores with hyphens for comparison.
+// pkgNameNormalizer collapses runs of [-_.] to a single hyphen (PEP 503).
+// Required so names like `zope.interface`, `zope-interface`, and
+// `zope_interface` compare equal across pyproject, lock, and dist-info.
+var pkgNameNormalizer = regexp.MustCompile(`[-_.]+`)
+
+// normalizeName returns the PEP 503 canonical form of a package name.
 func normalizeName(name string) string {
-	return strings.ToLower(strings.ReplaceAll(name, "_", "-"))
+	return pkgNameNormalizer.ReplaceAllString(strings.ToLower(name), "-")
 }
 
 // readLockFileFromCwd reads the lock file from the current or workspace root directory.

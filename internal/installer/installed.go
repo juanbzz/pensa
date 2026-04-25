@@ -2,8 +2,15 @@ package installer
 
 import (
 	"os"
+	"regexp"
 	"strings"
 )
+
+// distNameNormalizer collapses runs of [-_.] to a single hyphen (PEP 503).
+// Required because dist-info dirs use either `-`, `_`, or `.` as separators
+// depending on the project (e.g. `zope.interface-7.2.dist-info`,
+// `charset_normalizer-3.4.0.dist-info`), while lock files use hyphens.
+var distNameNormalizer = regexp.MustCompile(`[-_.]+`)
 
 // InstalledPackages scans site-packages for *.dist-info directories and returns
 // a map of normalized package name → version string.
@@ -54,8 +61,11 @@ func splitDistInfo(s string) (string, string) {
 	return "", ""
 }
 
-// normalizeDistName converts dist-info naming convention to comparison form.
-// Dist-info uses underscores (charset_normalizer), lock files use hyphens (charset-normalizer).
+// normalizeDistName returns the PEP 503 canonical form of a dist-info
+// package name: lowercase, with any run of `-`, `_`, or `.` collapsed to
+// a single hyphen. Matches the normalization lock files and resolvers use,
+// so comparisons across the two stay sound (e.g. `zope.interface` on disk
+// compares equal to `zope-interface` in the lock).
 func normalizeDistName(name string) string {
-	return strings.ToLower(strings.ReplaceAll(name, "_", "-"))
+	return distNameNormalizer.ReplaceAllString(strings.ToLower(name), "-")
 }

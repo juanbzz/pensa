@@ -30,12 +30,17 @@ func TestInstalledPackages_NonExistent(t *testing.T) {
 func TestInstalledPackages_ScansDistInfo(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create fake dist-info directories.
+	// Create fake dist-info directories. Covers the three separator
+	// styles packages use: hyphen (canonical), underscore
+	// (charset_normalizer), and dot (zope.interface). All three must
+	// normalize to the hyphen form so comparisons against the lock
+	// file stay sound.
 	dirs := []string{
 		"requests-2.31.0.dist-info",
 		"certifi-2023.7.22.dist-info",
 		"charset_normalizer-3.3.2.dist-info",
 		"urllib3-2.2.1.dist-info",
+		"zope.interface-7.2.dist-info",
 	}
 	for _, d := range dirs {
 		os.MkdirAll(filepath.Join(dir, d), 0755)
@@ -52,8 +57,9 @@ func TestInstalledPackages_ScansDistInfo(t *testing.T) {
 	}{
 		{"requests", "2.31.0"},
 		{"certifi", "2023.7.22"},
-		{"charset-normalizer", "3.3.2"}, // underscore → hyphen normalization
+		{"charset-normalizer", "3.3.2"}, // underscore → hyphen
 		{"urllib3", "2.2.1"},
+		{"zope-interface", "7.2"}, // dot → hyphen
 	}
 
 	for _, tt := range tests {
