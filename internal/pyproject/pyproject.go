@@ -23,7 +23,7 @@ type ProjectTable struct {
 	Version              string                        `toml:"version,omitempty"`
 	Description          string                        `toml:"description,omitempty"`
 	RequiresPython       string                        `toml:"requires-python,omitempty"`
-	License              string                        `toml:"license,omitempty"`
+	License              any                           `toml:"license,omitempty"` // PEP 621: string or {text=...} / {file=...}
 	Authors              []Author                      `toml:"authors,omitempty"`
 	Maintainers          []Author                      `toml:"maintainers,omitempty"`
 	Keywords             []string                      `toml:"keywords,omitempty"`

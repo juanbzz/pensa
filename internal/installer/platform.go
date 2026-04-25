@@ -147,8 +147,14 @@ func darwinPlatformTags(arch string) []string {
 		for v := 14; v >= 11; v-- {
 			tags = append(tags, fmt.Sprintf("macosx_%d_0_arm64", v))
 		}
+		// universal2 wheels are arch-agnostic fat binaries; they run
+		// on arm64 regardless of the deployment-target label, so we
+		// accept the 10.x labels that publishers commonly use.
 		for v := 14; v >= 11; v-- {
 			tags = append(tags, fmt.Sprintf("macosx_%d_0_universal2", v))
+		}
+		for minor := 15; minor >= 9; minor-- {
+			tags = append(tags, fmt.Sprintf("macosx_10_%d_universal2", minor))
 		}
 	} else {
 		// Intel Macs, 10.9+.
