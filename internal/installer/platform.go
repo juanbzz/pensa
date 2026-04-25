@@ -37,9 +37,15 @@ func NewPlatformTags(py *python.PythonInfo) *PlatformTags {
 		tags = append(tags, compatTag{cpVer, cpVer, plat})
 	}
 
-	// 2. CPython abi3: cp3XX-abi3-{platform} (stable ABI)
-	for _, plat := range platforms {
-		tags = append(tags, compatTag{cpVer, "abi3", plat})
+	// 2. CPython abi3: cp3XX-abi3-{platform} (stable ABI, forward-
+	// compatible). Wheels built against cp36-abi3 work on any CPython
+	// 3.6+ — emit older minors descending so the current minor wins
+	// when both cp310-abi3 and cp36-abi3 are available.
+	for minor := py.Minor; minor >= 2; minor-- {
+		cpV := fmt.Sprintf("cp%d%d", py.Major, minor)
+		for _, plat := range platforms {
+			tags = append(tags, compatTag{cpV, "abi3", plat})
+		}
 	}
 
 	// 3. CPython none: cp3XX-none-{platform}
