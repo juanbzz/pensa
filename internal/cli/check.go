@@ -15,7 +15,7 @@ func newCheckCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "check",
 		Short: "Validate project consistency",
-		Long:  "Checks that pyproject.toml and poetry.lock are consistent.",
+		Long:  "Checks that pyproject.toml and the lock file are consistent.",
 		Example: `  pensa check`,
 		Args: cobra.NoArgs,
 		RunE: runCheck,

@@ -30,7 +30,7 @@ func newLockCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "lock",
 		Short: "Lock the project dependencies",
-		Long:  "Reads pyproject.toml, resolves all dependencies, and writes poetry.lock.",
+		Long:  "Reads pyproject.toml, resolves all dependencies, and writes the lock file (pensa.lock).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLock(cmd, lockOptions{
 				upgrade:         upgradeAll,

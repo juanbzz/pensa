@@ -37,7 +37,7 @@ func runTree(cmd *cobra.Command, args []string) error {
 		normalized := normalizeName(args[0])
 		pkg, ok := byName[normalized]
 		if !ok {
-			return fmt.Errorf("package %q not found in poetry.lock", args[0])
+			return fmt.Errorf("package %q not found in lock file", args[0])
 		}
 		fmt.Fprintf(w, "%s %s %s\n", pkg.Name, pkg.Version, pkg.Description)
 		printDeps(w, pkg, byName, "", make(map[string]bool))

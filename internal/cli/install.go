@@ -58,7 +58,7 @@ func resolveInstallGroups(noDev bool, withGroups []string, onlyGroup string) []s
 	return groups
 }
 
-// installFromLock reads poetry.lock and installs packages into a venv.
+// installFromLock reads the project's lock file and installs packages into a venv.
 // If installRoot is true, also installs the project itself in editable mode.
 // groups controls which dependency groups to install (nil = all).
 // pkgScope, when non-empty, restricts the install to packages reachable
