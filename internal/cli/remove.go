@@ -72,6 +72,8 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	hadPEP735Groups := proj.DependencyGroups != nil
+
 	var removedPkgs []string
 	for _, arg := range args {
 		name := pep508.NormalizeName(arg)
@@ -87,8 +89,16 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		removedPkgs = append(removedPkgs, name)
 	}
 
-	if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {
-		return fmt.Errorf("write pyproject.toml: %w", err)
+	// Format-preserving in-place edit for PEP 621 / PEP 735;
+	// Marshal fallback for Poetry table layouts.
+	if usePreservingEditor(proj, group, hadPEP735Groups) {
+		if err := preservingRemove(pyprojectPath, group, removedPkgs); err != nil {
+			return fmt.Errorf("write pyproject.toml: %w", err)
+		}
+	} else {
+		if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {
+			return fmt.Errorf("write pyproject.toml: %w", err)
+		}
 	}
 
 	// Re-lock: entire workspace or single project.

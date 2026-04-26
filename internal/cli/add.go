@@ -77,11 +77,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		lockDir = ws.Root
 	}
 
-	type addedPkg struct {
-		name   string
-		extras []string
-	}
 	var addedNames []addedPkg
+	// Snapshot whether the project uses PEP 735 [dependency-groups]
+	// BEFORE the loop runs — addToDependencyGroup populates that
+	// table unconditionally, so we lose the original signal once
+	// the first arg is processed. usePreservingEditor uses this to
+	// avoid silently bypassing Poetry-style group layouts.
+	hadPEP735Groups := proj.DependencyGroups != nil
 
 	for _, arg := range args {
 		name, constraintStr, extras, err := parseAddArg(arg)
@@ -103,17 +105,30 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			// Version discovery is silent; resolved version shown after lock.
 		}
 
+		addedNames = append(addedNames, addedPkg{name: name, extras: extras})
+
 		if group != "" {
 			addToDependencyGroup(proj, name, constraintStr, extras, group)
 		} else {
 			addToProjectWithExtras(proj, name, constraintStr, extras)
 		}
-
-		addedNames = append(addedNames, addedPkg{name: name, extras: extras})
 	}
 
-	if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {
-		return fmt.Errorf("write pyproject.toml: %w", err)
+	// Format-preserving in-place edit covers the two shapes our
+	// users actually run into: PEP 621 [project].dependencies and
+	// PEP 735 [dependency-groups].<group>. Poetry-style table
+	// layouts (`[tool.poetry.dependencies]`,
+	// `[tool.poetry.group.X.dependencies]`) still go through the
+	// Marshal path — go-toml/v2 reformats every field on round-trip,
+	// so those pyprojects still see noisy diffs until a follow-up.
+	if usePreservingEditor(proj, group, hadPEP735Groups) {
+		if err := preservingAdd(pyprojectPath, group, addedNames, proj); err != nil {
+			return fmt.Errorf("write pyproject.toml: %w", err)
+		}
+	} else {
+		if err := pyproject.WritePyProject(pyprojectPath, proj); err != nil {
+			return fmt.Errorf("write pyproject.toml: %w", err)
+		}
 	}
 
 	// Re-lock: entire workspace or single project.
@@ -426,6 +441,115 @@ func addToGroupWithExtras(proj *pyproject.PyProject, name, constraint, group str
 		"extras":  extras,
 	}
 	proj.Tool.Poetry.Groups[group] = g
+}
+
+// addedPkg is a tuple of the name and extras the user passed to
+// `pensa add`, captured during the parse-args loop and re-used by
+// the post-loop write helpers.
+type addedPkg struct {
+	name   string
+	extras []string
+}
+
+// usePreservingEditor reports whether the format-preserving editor
+// can handle the targeted shape. PEP 621 [project].dependencies (no
+// group) and PEP 735 [dependency-groups].<group> are supported;
+// Poetry table-shaped layouts (`[tool.poetry.group.X.dependencies]`)
+// fall back to Marshal because the editor only handles array-of-
+// strings, not maps.
+//
+// hadPEP735 is the original-file signal — addToDependencyGroup
+// mutates the parsed struct to populate DependencyGroups whether
+// or not the source used PEP 735, so the post-mutation state is
+// useless for routing.
+func usePreservingEditor(proj *pyproject.PyProject, group string, hadPEP735 bool) bool {
+	if group == "" {
+		return proj.HasProjectSection()
+	}
+	return hadPEP735
+}
+
+// preservingAdd writes each freshly-added dep into the file via the
+// lossless editor. The dep STRINGS are read out of the already-mutated
+// proj struct so we don't have to duplicate the constraint-conversion
+// + extras-formatting logic.
+//
+// INVARIANT: proj must already reflect every addition by the time
+// this is called — addToProjectWithExtras / addToDependencyGroup
+// run earlier in the loop. A future refactor that moves the struct
+// mutation after the write would silently drop dep strings here.
+func preservingAdd(path, group string, added []addedPkg, proj *pyproject.PyProject) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	table, key := "project", "dependencies"
+	if group != "" {
+		table, key = "dependency-groups", group
+	}
+	for _, p := range added {
+		entry := lookupAddedDepString(proj, group, p.name)
+		if entry == "" {
+			return fmt.Errorf("internal: %q vanished from project state", p.name)
+		}
+		next, err := pyproject.EditDepArray(data, table, key, pyproject.EditAdd, entry, p.name)
+		if err != nil {
+			return err
+		}
+		data = next
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// preservingRemove deletes each removed dep from the file via the
+// lossless editor.
+func preservingRemove(path, group string, removed []string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	table, key := "project", "dependencies"
+	if group != "" {
+		table, key = "dependency-groups", group
+	}
+	for _, name := range removed {
+		next, err := pyproject.EditDepArray(data, table, key, pyproject.EditRemove, "", name)
+		if err != nil {
+			return err
+		}
+		data = next
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// lookupAddedDepString returns the just-written dep string for name
+// from the project struct (PEP 621 deps slice, or PEP 735 group
+// entries). Empty if not found.
+func lookupAddedDepString(proj *pyproject.PyProject, group, name string) string {
+	target := pep508.NormalizeName(name)
+	if group == "" {
+		if proj.Project == nil {
+			return ""
+		}
+		for _, d := range proj.Project.Dependencies {
+			parsed, err := pep508.Parse(d)
+			if err == nil && pep508.NormalizeName(parsed.Name) == target {
+				return d
+			}
+		}
+		return ""
+	}
+	for _, entry := range proj.DependencyGroups[group] {
+		s, ok := entry.(string)
+		if !ok {
+			continue
+		}
+		parsed, err := pep508.Parse(s)
+		if err == nil && pep508.NormalizeName(parsed.Name) == target {
+			return s
+		}
+	}
+	return ""
 }
 
 // addToDependencyGroup adds a dep to [dependency-groups] (PEP 735 format).
