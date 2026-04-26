@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"runtime"
 
 	"pensa.sh/pensa/pkg/pep508"
 	"pensa.sh/pensa/pkg/version"
@@ -10,12 +11,20 @@ import (
 // markerKeepsDep reports whether a dep with marker m should be kept
 // in the transitive graph given the project's requires-python range.
 //
-// Returns true (keep) in all cases EXCEPT: the marker references only
-// python_version / python_full_version AND every sampled Python
-// version inside the project's range makes the marker evaluate false.
-// Mixed or non-python markers are always kept — install-time marker
-// evaluation handles final exclusion and we can't know platform or
-// implementation values at resolve time.
+// Returns false (drop) when the marker evaluates false at every
+// sampled Python version in the project's range against the current
+// host platform. Returns true otherwise.
+//
+// Pensa locks for the current platform (no cross-platform locks
+// today). Markers gated on a different OS (sys_platform == "win32"
+// on macOS) or implementation (implementation_name == "pypy" on
+// CPython) evaluate false at every sample point and are dropped at
+// lock time. Without this filter, Windows-only packages like
+// win-precise-time end up locked on macOS and fail at install time
+// when their sdist can't build outside Windows.
+//
+// When pyReq is nil, the Python sweep defaults to [3.0, 3.99] —
+// platform markers are still evaluated against the host.
 func markerKeepsDep(m pep508.Marker, pyReq version.Constraint) bool {
 	if m == nil {
 		return true
@@ -23,14 +32,8 @@ func markerKeepsDep(m pep508.Marker, pyReq version.Constraint) bool {
 	if _, ok := m.(pep508.AnyMarker); ok {
 		return true
 	}
-	if pyReq == nil {
-		return true
-	}
-	if !markerIsPythonOnly(m) {
-		return true
-	}
+	env := currentPlatformEnv()
 	for _, py := range pythonSamplePoints(pyReq) {
-		env := permissiveEnv()
 		env.PythonVersion = py
 		env.PythonFullVersion = py + ".0"
 		if m.Evaluate(env) {
@@ -40,24 +43,58 @@ func markerKeepsDep(m pep508.Marker, pyReq version.Constraint) bool {
 	return false
 }
 
-// markerIsPythonOnly reports whether every CompareMarker in the AST
-// references python_version or python_full_version. Returns false
-// for AnyMarker or nil (neither classifies as "python-only" — those
-// are handled separately by markerKeepsDep).
-func markerIsPythonOnly(m pep508.Marker) bool {
-	switch v := m.(type) {
-	case nil:
-		return false
-	case pep508.AnyMarker:
-		return false
-	case *pep508.CompareMarker:
-		return v.Var == "python_version" || v.Var == "python_full_version"
-	case *pep508.AndMarker:
-		return markerIsPythonOnly(v.Left) && markerIsPythonOnly(v.Right)
-	case *pep508.OrMarker:
-		return markerIsPythonOnly(v.Left) && markerIsPythonOnly(v.Right)
+// currentPlatformEnv returns a PEP 508 environment populated for the
+// host pensa is running on. Used at lock time to filter deps whose
+// marker can't apply on this platform.
+//
+// Cross-platform locking (where the lockfile records every
+// platform-conditional dep regardless of host) would need a
+// different model — recording per-package markers on the lockfile
+// and re-evaluating at install time. uv supports this via [tool.uv]
+// platforms config; pensa does not yet.
+//
+// Implementation is hard-coded to CPython. PyPy / GraalPy users
+// get the wrong answer for `implementation_name`-gated markers
+// (PyPy-only deps would be dropped, CPython-only deps would be
+// kept incorrectly). Sniffing the venv's interpreter would fix it
+// but adds a dependency on venv discovery before resolve; deferred
+// until a user reports it.
+func currentPlatformEnv() pep508.Environment {
+	osName := "posix"
+	sysPlat := runtime.GOOS
+	plSys := "Linux"
+	switch runtime.GOOS {
+	case "darwin":
+		plSys = "Darwin"
+	case "windows":
+		osName = "nt"
+		sysPlat = "win32"
+		plSys = "Windows"
 	}
-	return false
+	machine := runtime.GOARCH
+	switch machine {
+	case "amd64":
+		machine = "x86_64"
+	case "arm64":
+		// macOS/Windows arm64 report "arm64" via platform.machine();
+		// Linux reports "aarch64". A Linux/arm64 host running pensa
+		// must produce "aarch64" or it'll silently drop deps gated
+		// on `platform_machine == "aarch64"`.
+		if runtime.GOOS == "linux" {
+			machine = "aarch64"
+		}
+	}
+	return pep508.Environment{
+		PythonVersion:                "3.99", // overridden by sampler
+		PythonFullVersion:            "3.99.0",
+		OSName:                       osName,
+		SysPlatform:                  sysPlat,
+		PlatformSystem:               plSys,
+		PlatformMachine:              machine,
+		PlatformPythonImplementation: "CPython",
+		ImplementationName:           "cpython",
+		ImplementationVersion:        "3.99.0",
+	}
 }
 
 // pythonSamplePoints returns Python version strings spanning the
