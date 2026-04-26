@@ -54,26 +54,43 @@ func sortPackages(pkgs []lockfile.LockedPackage) {
 	})
 }
 
-// filterTopLevel returns only packages that are direct dependencies in pyproject.toml.
+// filterTopLevel returns only packages that are direct dependencies
+// declared in pyproject.toml. In a workspace, top-level deps from
+// every member are aggregated — the workspace root itself has no
+// [project].dependencies, so without this aggregation `list -T` and
+// `tree -T` would return an empty set on any workspace project.
+//
+// Considers all dep groups (main + dev + named groups) so dev-only
+// projects aren't reported as having no top-level deps.
 func filterTopLevel(pkgs []lockfile.LockedPackage) ([]lockfile.LockedPackage, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("get working directory: %w", err)
 	}
 
-	pp, err := pyproject.ReadPyProject(filepath.Join(dir, "pyproject.toml"))
-	if err != nil {
-		return nil, fmt.Errorf("read pyproject.toml: %w", err)
-	}
-
-	deps, err := pp.ResolveDependencies()
-	if err != nil {
-		return nil, fmt.Errorf("resolve dependencies: %w", err)
-	}
-
-	directNames := make(map[string]bool, len(deps))
-	for _, d := range deps {
-		directNames[normalizeName(d.Name)] = true
+	directNames := make(map[string]bool)
+	if ws, _ := workspace.Discover(dir); ws != nil {
+		for _, m := range ws.Members {
+			deps, err := m.Project.ResolveAllDependencies()
+			if err != nil {
+				return nil, fmt.Errorf("resolve %s deps: %w", m.Name, err)
+			}
+			for _, d := range deps {
+				directNames[normalizeName(d.Dep.Name)] = true
+			}
+		}
+	} else {
+		pp, err := pyproject.ReadPyProject(filepath.Join(dir, "pyproject.toml"))
+		if err != nil {
+			return nil, fmt.Errorf("read pyproject.toml: %w", err)
+		}
+		deps, err := pp.ResolveAllDependencies()
+		if err != nil {
+			return nil, fmt.Errorf("resolve dependencies: %w", err)
+		}
+		for _, d := range deps {
+			directNames[normalizeName(d.Dep.Name)] = true
+		}
 	}
 
 	var filtered []lockfile.LockedPackage
