@@ -620,12 +620,25 @@ func (r *Range) String() string {
 
 // --- Union ---
 
-// Union represents a disjunction (OR) of constraints.
+// Union represents a disjunction (OR) of constraints. Parts must be
+// pairwise-disjoint; use NewUnion to construct.
 type Union struct {
 	constraints []Constraint
 }
 
-// NewUnion creates a union, flattening nested unions and removing empties.
+// NewUnion flattens nested unions and drops empties.
+//
+// INVARIANT: callers must pass pairwise-disjoint parts. The constructor
+// does not enforce this — every method on Union (Allows, AllowsAll,
+// AllowsAny, Difference) relies on the assumption that no two parts
+// share any version, so overlapping parts silently miscompute set
+// algebra without surfacing an error.
+//
+// In practice the invariant holds because every NewUnion call site
+// derives parts from disjoint operations (Range.Difference,
+// Constraint.Intersect against complementary ranges, and so on). New
+// call sites should preserve that property; if a future caller can
+// produce overlapping parts, it must call a coalescing pass first.
 func NewUnion(constraints ...Constraint) Constraint {
 	var flat []Constraint
 	for _, c := range constraints {
