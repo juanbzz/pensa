@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -195,7 +196,12 @@ func resolveAndLock(ctx context.Context, w io.Writer, proj *pyproject.PyProject,
 
 	contentHash := computeContentHash(pyprojectPath)
 
-	lf, err := lockfile.BuildLockFile(result, client, pythonVersions, contentHash, depGroups)
+	fullDepGroups, err := propagateGroups(ctx, result.Decisions, depGroups, baseProvider)
+	if err != nil {
+		return fmt.Errorf("propagate dependency groups: %w", err)
+	}
+
+	lf, err := lockfile.BuildLockFile(result, client, pythonVersions, contentHash, fullDepGroups)
 	if err != nil {
 		return fmt.Errorf("build lock file: %w", err)
 	}
@@ -639,7 +645,12 @@ func runLockWorkspace(ctx context.Context, w io.Writer, ws *workspace.Workspace,
 	// Compute content hash from all members' pyproject.toml files.
 	contentHash := computeWorkspaceHash(ws)
 
-	lf, err := lockfile.BuildLockFile(result, client, pythonVersions, contentHash, depGroups)
+	fullDepGroups, err := propagateGroups(ctx, result.Decisions, depGroups, baseProvider)
+	if err != nil {
+		return fmt.Errorf("propagate dependency groups: %w", err)
+	}
+
+	lf, err := lockfile.BuildLockFile(result, client, pythonVersions, contentHash, fullDepGroups)
 	if err != nil {
 		return fmt.Errorf("build lock file: %w", err)
 	}
@@ -691,6 +702,76 @@ func prefetchPackages(client *index.CachedClient, deps []resolve.Dependency, con
 		}(dep.Pkg)
 	}
 	wg.Wait()
+}
+
+// propagateGroups walks the resolved dep graph from each direct-dep
+// root and unions that root's groups onto every reachable transitive.
+// Without this step transitive deps default to "main", which is wrong
+// when a package is reachable only through a non-main group root —
+// e.g., pulumi-docker is required by pulumi-awsx in [infrastructure],
+// so it should be tagged as ["infrastructure"], not ["main"].
+//
+// The returned map contains every package in result.Decisions, keyed
+// by PEP 503 normalized name, with groups sorted alphabetically for
+// deterministic lockfile diffs across runs (declaration-order is
+// not preserved on purpose).
+func propagateGroups(
+	ctx context.Context,
+	decisions map[string]version.Version,
+	directDepGroups map[string][]string,
+	provider resolve.Provider,
+) (map[string][]string, error) {
+	adj := make(map[string][]string, len(decisions))
+	for pkg, ver := range decisions {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		deps, err := provider.Dependencies(ctx, pkg, ver)
+		if err != nil {
+			return nil, fmt.Errorf("fetch deps for %s %s: %w", pkg, ver, err)
+		}
+		children := make([]string, 0, len(deps))
+		for _, d := range deps {
+			children = append(children, pep508.NormalizeName(d.Pkg))
+		}
+		adj[pep508.NormalizeName(pkg)] = children
+	}
+
+	// One BFS per root, unioning all of the root's groups onto every
+	// reachable node in a single pass. Without this, a dep that
+	// belongs to N groups would walk the same subgraph N times.
+	reach := make(map[string]map[string]bool, len(decisions))
+	for directDep, groups := range directDepGroups {
+		root := pep508.NormalizeName(directDep)
+		visited := map[string]bool{}
+		queue := []string{root}
+		for len(queue) > 0 {
+			curr := queue[0]
+			queue = queue[1:]
+			if visited[curr] {
+				continue
+			}
+			visited[curr] = true
+			if reach[curr] == nil {
+				reach[curr] = map[string]bool{}
+			}
+			for _, g := range groups {
+				reach[curr][g] = true
+			}
+			queue = append(queue, adj[curr]...)
+		}
+	}
+
+	out := make(map[string][]string, len(reach))
+	for pkg, gs := range reach {
+		groups := make([]string, 0, len(gs))
+		for g := range gs {
+			groups = append(groups, g)
+		}
+		sort.Strings(groups)
+		out[pkg] = groups
+	}
+	return out, nil
 }
 
 func lockCurrent(pyprojectPath, dir string) bool {

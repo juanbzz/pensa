@@ -8,6 +8,7 @@ import (
 
 	"pensa.sh/pensa/internal/index"
 	"pensa.sh/pensa/internal/resolve"
+	"pensa.sh/pensa/pkg/pep508"
 	"pensa.sh/pensa/pkg/version"
 )
 
@@ -174,9 +175,10 @@ func BuildLockFile(
 		if err != nil {
 			return nil, fmt.Errorf("build lock entry for %s: %w", pkgName, err)
 		}
-		// Assign groups from direct dep mapping; transitive deps get "main".
-		normalized := strings.ToLower(strings.ReplaceAll(pkgName, "_", "-"))
-		if groups, ok := depGroups[normalized]; ok {
+		// Look up groups via PEP 503 canonical name so packages with
+		// dot or mixed separators (zope.interface) match callers'
+		// normalized keys.
+		if groups, ok := depGroups[pep508.NormalizeName(pkgName)]; ok {
 			locked.Groups = groups
 		}
 		lf.Packages = append(lf.Packages, locked)
