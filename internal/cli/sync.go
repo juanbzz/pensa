@@ -113,7 +113,23 @@ func planVenvChanges(
 // single-project mode, the cwd's project) into the venv in editable
 // mode. Used by both install and sync so members never drift out of
 // link after a sync run from inside a member directory.
-func installEditableProjects(w io.Writer, ws *workspace.Workspace, dir, venvPath string, py *python.PythonInfo) error {
+//
+// When scopedMember is non-nil, only that member is installed —
+// honoring `pensa install --package <member>`'s "this member only"
+// contract instead of stamping out editable links for every member.
+func installEditableProjects(
+	w io.Writer,
+	ws *workspace.Workspace,
+	scopedMember *workspace.Member,
+	dir, venvPath string,
+	py *python.PythonInfo,
+) error {
+	if scopedMember != nil {
+		if err := installProject(w, scopedMember.Path, venvPath, py); err != nil {
+			return fmt.Errorf("install member %s: %w", scopedMember.Name, err)
+		}
+		return nil
+	}
 	if ws != nil {
 		for _, m := range ws.Members {
 			if err := installProject(w, m.Path, venvPath, py); err != nil {
@@ -127,6 +143,7 @@ func installEditableProjects(w io.Writer, ws *workspace.Workspace, dir, venvPath
 	}
 	return nil
 }
+
 
 // venvSkipPackages are infrastructure packages that should never be removed.
 var venvSkipPackages = map[string]bool{
@@ -232,7 +249,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err := installEditableProjects(w, ws, rootDir, venvPath, py); err != nil {
+	if err := installEditableProjects(w, ws, nil, rootDir, venvPath, py); err != nil {
 		return err
 	}
 

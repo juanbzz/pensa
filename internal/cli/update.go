@@ -60,5 +60,5 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return installFromLock(os.Stderr, true, nil)
+	return installFromLock(os.Stderr, true, nil, "")
 }

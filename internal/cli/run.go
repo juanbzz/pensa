@@ -56,7 +56,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	// Auto-sync: ensure venv is up to date.
 	if !noSync {
 		// Output to stderr so it doesn't pollute command stdout.
-		if err := installFromLock(os.Stderr, true, nil); err != nil {
+		if err := installFromLock(os.Stderr, true, nil, ""); err != nil {
 			return fmt.Errorf("sync: %w", err)
 		}
 	} else if !python.VenvExists(venvPath) {

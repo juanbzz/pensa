@@ -134,7 +134,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err := installFromLock(os.Stderr, true, nil); err != nil {
+	if err := installFromLock(os.Stderr, true, nil, ""); err != nil {
 		return err
 	}
 

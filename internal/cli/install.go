@@ -14,6 +14,7 @@ import (
 	"pensa.sh/pensa/internal/lockfile"
 	"pensa.sh/pensa/internal/python"
 	"pensa.sh/pensa/internal/workspace"
+	"pensa.sh/pensa/pkg/pep508"
 	"pensa.sh/pensa/pkg/version"
 	"github.com/spf13/cobra"
 )
@@ -38,9 +39,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	noDev, _ := cmd.Flags().GetBool("no-dev")
 	withGroups, _ := cmd.Flags().GetStringSlice("with")
 	onlyGroup, _ := cmd.Flags().GetString("only")
+	pkgScope, _ := cmd.Flags().GetString("package")
 
 	groups := resolveInstallGroups(noDev, withGroups, onlyGroup)
-	return installFromLock(cmd.OutOrStdout(), !noRoot, groups)
+	return installFromLock(cmd.OutOrStdout(), !noRoot, groups, pkgScope)
 }
 
 // resolveInstallGroups determines which groups to install based on flags.
@@ -59,8 +61,11 @@ func resolveInstallGroups(noDev bool, withGroups []string, onlyGroup string) []s
 // installFromLock reads poetry.lock and installs packages into a venv.
 // If installRoot is true, also installs the project itself in editable mode.
 // groups controls which dependency groups to install (nil = all).
+// pkgScope, when non-empty, restricts the install to packages reachable
+// from the named workspace member's [project].dependencies — used by
+// `pensa install --package <member>`.
 // Shared between `install`, `add`, `update`, and `remove` commands.
-func installFromLock(w io.Writer, installRoot bool, groups []string) error {
+func installFromLock(w io.Writer, installRoot bool, groups []string, pkgScope string) error {
 	start := time.Now()
 
 	dir, err := os.Getwd()
@@ -87,6 +92,17 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 	if len(lf.Packages) == 0 {
 		fmt.Fprintf(w, "No packages to install.\n")
 		return nil
+	}
+
+	// Restrict to one workspace member's dep closure when --package is set.
+	var scopedMember *workspace.Member
+	if pkgScope != "" {
+		filtered, member, err := lockfileScopedToMember(w, lf, ws, pkgScope)
+		if err != nil {
+			return err
+		}
+		lf = filtered
+		scopedMember = member
 	}
 
 	// Pick Python: prefer the existing venv's pyvenv.cfg (the source of truth
@@ -120,7 +136,7 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 	if len(toInstall) == 0 && len(toRemove) == 0 {
 		fmt.Fprintf(w, "%s\n", green("All packages up to date."))
 		if installRoot {
-			if err := installEditableProjects(w, ws, dir, venvPath, py); err != nil {
+			if err := installEditableProjects(w, ws, scopedMember, dir, venvPath, py); err != nil {
 				return err
 			}
 		}
@@ -163,12 +179,93 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 	}
 
 	if installRoot {
-		if err := installEditableProjects(w, ws, dir, venvPath, py); err != nil {
+		if err := installEditableProjects(w, ws, scopedMember, dir, venvPath, py); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// lockfileScopedToMember returns a copy of lf containing only the
+// packages reachable from the named workspace member's direct
+// dependencies, plus a pointer to the resolved member so the caller
+// can route editable installs to that member alone. Powers
+// `pensa install --package <member>`.
+//
+// Member name lookup is PEP 503-normalized: pgmarketing-backend,
+// pgmarketing_backend, and PGMarketing.Backend all match the same
+// member. Roots that are declared in the member's pyproject but
+// missing from the lock produce a warning so a stale lock is
+// surfaced rather than silently filtered out.
+func lockfileScopedToMember(
+	w io.Writer,
+	lf *lockfile.LockFile,
+	ws *workspace.Workspace,
+	pkgScope string,
+) (*lockfile.LockFile, *workspace.Member, error) {
+	if ws == nil {
+		return nil, nil, fmt.Errorf("--package %q: not in a workspace", pkgScope)
+	}
+	target := pep508.NormalizeName(pkgScope)
+	var member *workspace.Member
+	for i := range ws.Members {
+		if pep508.NormalizeName(ws.Members[i].Name) == target {
+			member = &ws.Members[i]
+			break
+		}
+	}
+	if member == nil {
+		names := make([]string, 0, len(ws.Members))
+		for _, m := range ws.Members {
+			names = append(names, m.Name)
+		}
+		return nil, nil, fmt.Errorf("--package %q: unknown workspace member (available: %v)", pkgScope, names)
+	}
+
+	deps, err := member.Project.ResolveAllDependencies()
+	if err != nil {
+		return nil, nil, fmt.Errorf("read %s deps: %w", member.Name, err)
+	}
+	roots := make([]string, 0, len(deps))
+	for _, gd := range deps {
+		roots = append(roots, normalizeName(gd.Dep.Name))
+	}
+
+	adj := make(map[string][]string, len(lf.Packages))
+	for _, pkg := range lf.Packages {
+		children := make([]string, 0, len(pkg.Dependencies))
+		for depName := range pkg.Dependencies {
+			children = append(children, normalizeName(depName))
+		}
+		adj[normalizeName(pkg.Name)] = children
+	}
+
+	for _, r := range roots {
+		if _, present := adj[r]; !present {
+			fmt.Fprintf(w, "warning: %s declares dep %q but it isn't in the lockfile (run 'pensa lock')\n", member.Name, r)
+		}
+	}
+
+	reach := map[string]bool{}
+	queue := append([]string{}, roots...)
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+		if reach[curr] {
+			continue
+		}
+		reach[curr] = true
+		queue = append(queue, adj[curr]...)
+	}
+
+	scoped := &lockfile.LockFile{Metadata: lf.Metadata}
+	for _, pkg := range lf.Packages {
+		if reach[normalizeName(pkg.Name)] {
+			scoped.Packages = append(scoped.Packages, pkg)
+		}
+	}
+	return scoped, member, nil
 }
 
 // compatibleWithPython checks whether a locked package is compatible with
