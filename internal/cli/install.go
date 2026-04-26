@@ -107,84 +107,64 @@ func installFromLock(w io.Writer, installRoot bool, groups []string) error {
 
 	ins := installer.NewInstaller(client, venvPath, py, cacheDir)
 
-	// Check what's already installed.
 	siteDir := py.SitePackagesDir(venvPath)
 	installed, _ := installer.InstalledPackages(siteDir)
+	projectNames := localProjectNames(rootDir)
 
-	var toInstall []lockfile.LockedPackage
-	for _, pkg := range lf.Packages {
-		// Filter by group if specified.
-		if groups != nil && !packageInGroups(pkg, groups) {
-			continue
-		}
-		if installed[normalizeName(pkg.Name)] == pkg.Version {
-			continue
-		}
-		// Skip packages incompatible with current Python.
-		if !compatibleWithPython(pkg, py) {
-			continue
-		}
-		toInstall = append(toInstall, pkg)
-	}
+	cfg, _ := config.New()
+	verbose := cfg != nil && cfg.Verbose
+	out := newUI(w, verbose, cfg != nil && cfg.Quiet)
 
-	if len(toInstall) == 0 {
+	toInstall, toRemove := planVenvChanges(lf, installed, groups, py, projectNames)
+
+	if len(toInstall) == 0 && len(toRemove) == 0 {
 		fmt.Fprintf(w, "%s\n", green("All packages up to date."))
-		// Still install project itself if requested.
 		if installRoot {
-			if ws != nil {
-				for _, m := range ws.Members {
-					if err := installProject(w, m.Path, venvPath, py); err != nil {
-						return fmt.Errorf("install member %s: %w", m.Name, err)
-					}
-				}
-			} else {
-				if err := installProject(w, dir, venvPath, py); err != nil {
-					return fmt.Errorf("install project: %w", err)
-				}
+			if err := installEditableProjects(w, ws, dir, venvPath, py); err != nil {
+				return err
 			}
 		}
 		return nil
 	}
 
-	results, err := downloadPackages(w, ins, toInstall)
-	if err != nil {
-		return err
+	for _, pkg := range toRemove {
+		if err := installer.UninstallPackage(siteDir, pkg.name, pkg.version); err != nil {
+			return fmt.Errorf("uninstall %s: %w", pkg.name, err)
+		}
 	}
 
-	// Phase 2: Install sequentially from cache.
-	cfg, _ := config.New()
-	verbose := cfg != nil && cfg.Verbose
-	out := newUI(w, verbose, cfg != nil && cfg.Quiet)
-
-	for _, res := range results {
-		if err := ins.InstallFromCache(res.pkg, res.wheelPath); err != nil {
-			return fmt.Errorf("install %s: %w", res.pkg.Name, err)
+	if len(toInstall) > 0 {
+		results, err := downloadPackages(w, ins, toInstall)
+		if err != nil {
+			return err
+		}
+		for _, res := range results {
+			if err := ins.InstallFromCache(res.pkg, res.wheelPath); err != nil {
+				return fmt.Errorf("install %s: %w", res.pkg.Name, err)
+			}
 		}
 	}
 
 	elapsed := time.Since(start)
-	out.Installed(len(results), elapsed)
+	if len(toInstall) > 0 {
+		out.Installed(len(toInstall), elapsed)
+	}
+	if len(toRemove) > 0 {
+		out.Uninstalled(len(toRemove), elapsed)
+	}
 
-	// Per-package diff only in verbose mode.
 	if verbose {
-		for _, res := range results {
-			out.DiffAdd(res.pkg.Name, res.pkg.Version)
+		for _, pkg := range toRemove {
+			out.DiffRemove(pkg.name, pkg.version)
+		}
+		for _, pkg := range toInstall {
+			out.DiffAdd(pkg.Name, pkg.Version)
 		}
 	}
 
-	// Install the project itself in editable mode.
 	if installRoot {
-		if ws != nil {
-			// Workspace: install each member in editable mode.
-			for _, m := range ws.Members {
-				if err := installProject(w, m.Path, venvPath, py); err != nil {
-					return fmt.Errorf("install member %s: %w", m.Name, err)
-				}
-			}
-		} else {
-			if err := installProject(w, dir, venvPath, py); err != nil {
-				return fmt.Errorf("install project: %w", err)
-			}
+		if err := installEditableProjects(w, ws, dir, venvPath, py); err != nil {
+			return err
 		}
 	}
 
