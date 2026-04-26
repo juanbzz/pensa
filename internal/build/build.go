@@ -12,10 +12,23 @@ import (
 	"pensa.sh/pensa/internal/python"
 )
 
-// lastLine returns the last non-empty line from a string (for clean error messages).
+// lastLine returns the trailing line of s after trimming surrounding
+// whitespace. Used on the build-hook success path to extract the
+// wheel filename printed on the last line of stdout.
 func lastLine(s string) string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
 	return lines[len(lines)-1]
+}
+
+// indentLines prefixes every line of s with prefix. Used to make
+// multi-line subprocess output stand out as a quoted block in
+// pensa's own error messages.
+func indentLines(s, prefix string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = prefix + line
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Options controls what to build.
@@ -90,7 +103,7 @@ func Build(opts Options) (*Result, error) {
 
 		file, err := invokeBuildHook(venvPython, opts.ProjectDir, opts.OutputDir, backendModule, backendObject, "build_editable")
 		if err != nil {
-			return nil, fmt.Errorf("build editable: %w", err)
+			return nil, err
 		}
 		result.Files = append(result.Files, file)
 		return &result, nil
@@ -163,10 +176,16 @@ print(result)
 
 	out, err := cmd.Output()
 	if err != nil {
-		// Include stderr in error for debugging, but don't print it raw.
 		errMsg := strings.TrimSpace(stderr.String())
 		if errMsg != "" {
-			return "", fmt.Errorf("invoke %s: %s", hook, lastLine(errMsg))
+			// Relay the full backend output indented so multi-line
+			// errors (e.g., hatchling's "Please add the following
+			// config" instructions) reach the user intact instead
+			// of being collapsed to the placeholder example on the
+			// last line. Caller adds its own framing — no hook-name
+			// prefix here so users don't see redundant "build_editable
+			// failed: ... build backend reported: ..." stacking.
+			return "", fmt.Errorf("%s", indentLines(errMsg, "    "))
 		}
 		return "", fmt.Errorf("invoke %s: %w", hook, err)
 	}

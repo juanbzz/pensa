@@ -47,9 +47,11 @@ func installProject(w io.Writer, projectDir, venvPath string, py *python.PythonI
 		Editable:   true,
 	})
 	if err != nil {
-		// Warn but don't fail — deps are installed, just no editable project.
+		// Warn but don't fail — deps are installed, just no editable
+		// project. Surface the project name so users know which
+		// pyproject to fix when there are multiple workspace members.
 		out := newUI(w, false, false)
-		out.Warning(fmt.Sprintf("editable install failed: %s", err))
+		out.Warning(fmt.Sprintf("could not editable-install %s — its build backend reported:\n%s", name, err))
 		return nil
 	}
 
