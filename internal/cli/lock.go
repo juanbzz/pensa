@@ -27,14 +27,26 @@ import (
 func newLockCmd() *cobra.Command {
 	var upgradeAll bool
 	var upgradePackages []string
+	var onlyGroups []string
+	var withoutGroups []string
 	cmd := &cobra.Command{
 		Use:   "lock",
 		Short: "Lock the project dependencies",
 		Long:  "Reads pyproject.toml, resolves all dependencies, and writes the lock file (pensa.lock).",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(onlyGroups) > 0 && len(withoutGroups) > 0 {
+				return fmt.Errorf("'--only' and '--without' are mutually exclusive")
+			}
+			for _, g := range withoutGroups {
+				if g == "main" {
+					return fmt.Errorf("'--without main' makes no sense — main holds the project's runtime deps; use '--only <group>' to lock a single group instead")
+				}
+			}
 			return runLock(cmd, lockOptions{
 				upgrade:         upgradeAll,
 				upgradePackages: upgradePackages,
+				onlyGroups:      onlyGroups,
+				withoutGroups:   withoutGroups,
 			})
 		},
 	}
@@ -42,6 +54,10 @@ func newLockCmd() *cobra.Command {
 		"Re-resolve all dependencies, ignoring the existing lock file")
 	cmd.Flags().StringArrayVarP(&upgradePackages, "upgrade-package", "P", nil,
 		"Upgrade the specified package, keeping others pinned (repeatable)")
+	cmd.Flags().StringArrayVar(&onlyGroups, "only", nil,
+		"Lock only this group (main is always included; repeatable)")
+	cmd.Flags().StringArrayVar(&withoutGroups, "without", nil,
+		"Skip this group during resolution (repeatable)")
 	return cmd
 }
 
@@ -53,7 +69,10 @@ func runLock(cmd *cobra.Command, opts lockOptions) error {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	skipFastPath := opts.upgrade || len(opts.upgradePackages) > 0
+	skipFastPath := opts.upgrade ||
+		len(opts.upgradePackages) > 0 ||
+		len(opts.onlyGroups) > 0 ||
+		len(opts.withoutGroups) > 0
 
 	// Check for workspace.
 	ws, _ := workspace.Discover(dir)
@@ -104,6 +123,7 @@ func resolveAndLock(ctx context.Context, w io.Writer, proj *pyproject.PyProject,
 	if err != nil {
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
+	groupedDeps = filterGroups(groupedDeps, opts.onlyGroups, opts.withoutGroups)
 
 	// Parse project's requires-python for version filtering.
 	var requiresPython version.Constraint
@@ -210,6 +230,8 @@ func resolveAndLock(ctx context.Context, w io.Writer, proj *pyproject.PyProject,
 	if err := lockfile.WritePensaLockFile(pensaLockPath, lf); err != nil {
 		return fmt.Errorf("write lock file: %w", err)
 	}
+
+	warnPartialLock(w, opts)
 
 	elapsed := time.Since(start)
 	resolveUI := newUI(w, false, false)
@@ -540,6 +562,7 @@ func runLockWorkspace(ctx context.Context, w io.Writer, ws *workspace.Workspace,
 		}
 		allGroupedDeps = append(allGroupedDeps, groupedDeps...)
 	}
+	allGroupedDeps = filterGroups(allGroupedDeps, opts.onlyGroups, opts.withoutGroups)
 
 	// Inline workspace member deps: when A depends on B (workspace member),
 	// replace B with B's own dependencies so they get resolved from PyPI.
@@ -659,6 +682,8 @@ func runLockWorkspace(ctx context.Context, w io.Writer, ws *workspace.Workspace,
 	if err := lockfile.WritePensaLockFile(pensaLockPath, lf); err != nil {
 		return fmt.Errorf("write lock file: %w", err)
 	}
+
+	warnPartialLock(w, opts)
 
 	elapsed := time.Since(start)
 	resolveUI := newUI(w, false, false)
@@ -877,6 +902,69 @@ func groupedDepsToRequirements(deps []pyproject.GroupedDependency) []pep508.Depe
 		reqs = append(reqs, gd.Dep)
 	}
 	return reqs
+}
+
+// warnPartialLock prints a one-line notice when the user scoped the
+// lock with --only or --without. The resulting lockfile is
+// intentionally incomplete; subsequent `pensa add` / `pensa remove`
+// re-resolve the full pyproject and would clobber the partial lock,
+// so we surface the trade-off explicitly.
+func warnPartialLock(w io.Writer, opts lockOptions) {
+	if len(opts.onlyGroups) == 0 && len(opts.withoutGroups) == 0 {
+		return
+	}
+	ui := newUI(w, false, false)
+	switch {
+	case len(opts.onlyGroups) > 0:
+		ui.Warning(fmt.Sprintf(
+			"locked only %v (plus main); other groups are absent. `pensa add` / `pensa remove` will re-resolve everything and overwrite this partial lock.",
+			opts.onlyGroups))
+	case len(opts.withoutGroups) > 0:
+		ui.Warning(fmt.Sprintf(
+			"locked without %v; those groups are absent. `pensa add` / `pensa remove` will re-resolve everything and overwrite this partial lock.",
+			opts.withoutGroups))
+	}
+}
+
+// filterGroups narrows a flat dep list to the groups requested by
+// the user via `pensa lock --only X` or `--without X`. The `main`
+// group is always retained — locking without main makes no sense
+// and would produce an installable surface that excludes the
+// project's own runtime deps.
+//
+// only and without are mutually exclusive at the flag layer; this
+// helper accepts both for caller convenience but only one will be
+// non-empty in practice. Returns deps unchanged when both are nil.
+func filterGroups(deps []pyproject.GroupedDependency, only, without []string) []pyproject.GroupedDependency {
+	if len(only) == 0 && len(without) == 0 {
+		return deps
+	}
+	allowed := func(group string) bool {
+		if group == "main" {
+			return true
+		}
+		if len(only) > 0 {
+			for _, g := range only {
+				if g == group {
+					return true
+				}
+			}
+			return false
+		}
+		for _, g := range without {
+			if g == group {
+				return false
+			}
+		}
+		return true
+	}
+	filtered := make([]pyproject.GroupedDependency, 0, len(deps))
+	for _, gd := range deps {
+		if allowed(gd.Group) {
+			filtered = append(filtered, gd)
+		}
+	}
+	return filtered
 }
 
 // inlineWorkspaceDeps expands workspace member dependencies into their

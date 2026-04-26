@@ -12,6 +12,8 @@ import (
 type lockOptions struct {
 	upgrade         bool     // ignore all pinned versions (re-resolve fresh)
 	upgradePackages []string // ignore pinned versions for these packages only
+	onlyGroups      []string // resolve only these groups (main is always included)
+	withoutGroups   []string // skip these groups during resolution
 }
 
 var _ resolve.Provider = (*lockedProvider)(nil)
