@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -102,15 +103,42 @@ func (u *ui) Member(name string) {
 // --- Diagnostics (never suppressed) ---
 
 func (u *ui) Error(msg string) {
-	fmt.Fprintf(u.w, "%s %s\n", red(bold("error:")), msg)
+	u.printDiagnostic(red(bold("error:")), "error:", msg)
 }
 
 func (u *ui) Warning(msg string) {
-	fmt.Fprintf(u.w, "%s %s\n", yellow(bold("warning:")), msg)
+	u.printDiagnostic(yellow(bold("warning:")), "warning:", msg)
 }
 
 func (u *ui) Hint(msg string) {
-	fmt.Fprintf(u.w, "%s %s\n", cyan(bold("hint:")), msg)
+	u.printDiagnostic(cyan(bold("hint:")), "hint:", msg)
+}
+
+// printDiagnostic prints a labeled multi-line message with
+// continuation lines aligned beneath the message body (not the
+// label). Without this, multi-line content would dangle at column 0,
+// visually detached from the label that introduces it:
+//
+//	warning: a problem happened
+//	    detail line 1
+//	    detail line 2          <- looks unrelated
+//
+// becomes:
+//
+//	warning: a problem happened
+//	             detail line 1
+//	             detail line 2  <- aligned under the message body
+//
+// labelPlain is the un-styled label (e.g. "warning:") used to
+// compute the continuation width — labelStyled may include ANSI
+// escape codes that throw off len().
+func (u *ui) printDiagnostic(labelStyled, labelPlain, msg string) {
+	cont := strings.Repeat(" ", len(labelPlain)+1)
+	lines := strings.Split(msg, "\n")
+	fmt.Fprintf(u.w, "%s %s\n", labelStyled, lines[0])
+	for _, line := range lines[1:] {
+		fmt.Fprintf(u.w, "%s%s\n", cont, line)
+	}
 }
 
 // --- Helpers ---
