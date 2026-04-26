@@ -2,6 +2,7 @@ package build
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,6 +30,45 @@ func indentLines(s, prefix string) string {
 		lines[i] = prefix + line
 	}
 	return strings.Join(lines, "\n")
+}
+
+// stripPythonTraceback removes the CPython traceback frames from
+// the start of a relayed subprocess error, keeping the exception
+// line and anything the backend printed after it. A traceback in
+// CPython is delimited by:
+//
+//	Traceback (most recent call last):
+//	  File "...", line N, in ...
+//	    code
+//	  File "...", line N, in ...
+//	    code
+//	ExceptionType: message
+//	[backend's own multi-line guidance, if any]
+//
+// Frame lines start with two spaces ("  File" or "    "); the
+// exception line begins at column 0. Skip from "Traceback" through
+// to the first non-indented line and keep everything from there.
+//
+// If no "Traceback" marker is found (some backends print plain
+// errors), returns the input unchanged.
+func stripPythonTraceback(s string) string {
+	lines := strings.Split(s, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "Traceback (most recent call last):") {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return s
+	}
+	for i := start + 1; i < len(lines); i++ {
+		if !strings.HasPrefix(lines[i], "  ") && lines[i] != "" {
+			return strings.Join(lines[i:], "\n")
+		}
+	}
+	return s
 }
 
 // Options controls what to build.
@@ -178,14 +218,16 @@ print(result)
 	if err != nil {
 		errMsg := strings.TrimSpace(stderr.String())
 		if errMsg != "" {
-			// Relay the full backend output indented so multi-line
-			// errors (e.g., hatchling's "Please add the following
-			// config" instructions) reach the user intact instead
-			// of being collapsed to the placeholder example on the
-			// last line. Caller adds its own framing — no hook-name
-			// prefix here so users don't see redundant "build_editable
-			// failed: ... build backend reported: ..." stacking.
-			return "", fmt.Errorf("%s", indentLines(errMsg, "    "))
+			// Relay the backend's actionable output indented so
+			// multi-line errors (e.g., hatchling's "Please add the
+			// following config" instructions) reach the user intact.
+			// Strip the CPython traceback prelude — those frames are
+			// noise compared to the exception line and any backend
+			// guidance that follows. Caller adds its own framing —
+			// no hook-name prefix here so users don't see redundant
+			// "build_editable failed: ... build backend reported: ..."
+			// stacking.
+			return "", errors.New(indentLines(stripPythonTraceback(errMsg), "    "))
 		}
 		return "", fmt.Errorf("invoke %s: %w", hook, err)
 	}
