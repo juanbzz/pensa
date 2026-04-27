@@ -24,7 +24,7 @@ type SolveError struct {
 func (e *SolveError) Error() string {
 	conflicts := collectConflicts(e.Incompatibility, map[*Incompatibility]bool{})
 	if len(conflicts) == 0 {
-		return fmt.Sprintf("version solving failed: %s", e.Incompatibility)
+		return fmt.Sprintf("version solving failed: %s\n\n%s", e.Incompatibility, solveErrorHint())
 	}
 	projectName := e.Root
 	if projectName == "" {
@@ -34,7 +34,19 @@ func (e *SolveError) Error() string {
 	for i, c := range conflicts {
 		lines[i] = "  - " + formatConflict(c, projectName)
 	}
-	return "version solving failed:\n" + strings.Join(lines, "\n")
+	return "version solving failed:\n" + strings.Join(lines, "\n") + "\n\n" + solveErrorHint()
+}
+
+// solveErrorHint is the actionable footer appended to every solve
+// failure. Conflicts are inherently ambiguous — pensa can name the
+// packages involved but not which constraint the user actually wants
+// to relax — so the hint points at the two recovery levers users
+// have: refresh a specific package or widen its constraint in
+// pyproject.toml.
+func solveErrorHint() string {
+	return "Try one of:\n" +
+		"  - pensa lock --upgrade-package <name>   refresh a single package\n" +
+		"  - widen a constraint in pyproject.toml so a wider version range is acceptable"
 }
 
 func collectConflicts(incompat *Incompatibility, seen map[*Incompatibility]bool) []*Incompatibility {

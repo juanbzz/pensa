@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -196,6 +197,14 @@ func resolveAndLock(ctx context.Context, w io.Writer, proj *pyproject.PyProject,
 		result, solveErr = solver.Solve(ctx)
 		return solveErr
 	}); err != nil {
+		// SolveError already starts with "version solving failed:";
+		// passing it through avoids stuttery "resolve: version
+		// solving failed: ..." stacking. Other errors (network,
+		// ctx cancellation, etc.) stay prefixed for context.
+		var se *resolve.SolveError
+		if errors.As(err, &se) {
+			return err
+		}
 		return fmt.Errorf("resolve: %w", err)
 	}
 
@@ -647,6 +656,14 @@ func runLockWorkspace(ctx context.Context, w io.Writer, ws *workspace.Workspace,
 		result, solveErr = solver.Solve(ctx)
 		return solveErr
 	}); err != nil {
+		// SolveError already starts with "version solving failed:";
+		// passing it through avoids stuttery "resolve: version
+		// solving failed: ..." stacking. Other errors (network,
+		// ctx cancellation, etc.) stay prefixed for context.
+		var se *resolve.SolveError
+		if errors.As(err, &se) {
+			return err
+		}
 		return fmt.Errorf("resolve: %w", err)
 	}
 

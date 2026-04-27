@@ -293,6 +293,9 @@ func TestSolver_Conflict(t *testing.T) {
 	assert.True(strings.Contains(msg, "depends on c"))
 	assert.True(!strings.Contains(msg, "$root"))
 	assert.True(!strings.Contains(msg, "{"))
+	// Actionable footer is appended verbatim — assert against the
+	// helper's output so a future rephrasing doesn't slip past us.
+	assert.True(strings.HasSuffix(strings.TrimRight(msg, "\n"), strings.TrimRight(solveErrorHint(), "\n")))
 }
 
 func TestSolver_ConflictShowsProjectName(t *testing.T) {
