@@ -93,3 +93,41 @@ func TestFilterGroups_OnlyWithMultipleGroups(t *testing.T) {
 	out := filterGroups(deps, []string{"infrastructure", "bootstrap"}, nil)
 	assert.Equal(names(out), []string{"django", "pulumi", "pulumi-tls"})
 }
+
+// excludedGroupsFor records what got dropped so subsequent
+// `pensa add` / `pensa remove` runs can re-apply the same scope.
+// Both the `--without` shape and the `--only` shape (which is
+// inverted before storage) must produce a stable, sorted list.
+
+func TestExcludedGroupsFor_NoFlagsNil(t *testing.T) {
+	assert := is.New(t)
+	deps := []pyproject.GroupedDependency{
+		gd("django", "main"),
+		gd("black", "dev"),
+	}
+	assert.Equal(excludedGroupsFor(deps, nil, nil), []string(nil))
+}
+
+func TestExcludedGroupsFor_WithoutCopiesAndSorts(t *testing.T) {
+	assert := is.New(t)
+	deps := []pyproject.GroupedDependency{
+		gd("django", "main"),
+		gd("black", "dev"),
+	}
+	got := excludedGroupsFor(deps, nil, []string{"infra", "bootstrap"})
+	assert.Equal(got, []string{"bootstrap", "infra"})
+}
+
+func TestExcludedGroupsFor_OnlyInvertsToExcludedSet(t *testing.T) {
+	assert := is.New(t)
+	deps := []pyproject.GroupedDependency{
+		gd("django", "main"),
+		gd("black", "dev"),
+		gd("pulumi", "infrastructure"),
+		gd("pulumi-tls", "bootstrap"),
+	}
+	// --only infrastructure → main + infrastructure are kept; the
+	// excluded set is dev + bootstrap (sorted).
+	got := excludedGroupsFor(deps, []string{"infrastructure"}, nil)
+	assert.Equal(got, []string{"bootstrap", "dev"})
+}

@@ -58,7 +58,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		announce()
-		if err := runLockWorkspace(cmd.Context(), os.Stderr, ws, opts); err != nil {
+		lockOpts, err := inheritExcludedGroups(ws.Root, opts)
+		if err != nil {
+			return err
+		}
+		if err := runLockWorkspace(cmd.Context(), os.Stderr, ws, lockOpts); err != nil {
 			return err
 		}
 		return installFromLock(os.Stderr, true, nil, "")
@@ -81,7 +85,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	announce()
-	if err := resolveAndLock(cmd.Context(), os.Stderr, proj, pyprojectPath, opts); err != nil {
+	lockOpts, err := inheritExcludedGroups(dir, opts)
+	if err != nil {
+		return err
+	}
+	if err := resolveAndLock(cmd.Context(), os.Stderr, proj, pyprojectPath, lockOpts); err != nil {
 		return err
 	}
 

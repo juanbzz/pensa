@@ -97,6 +97,16 @@ func WritePensaLockFile(path string, lf *LockFile) error {
 	b.WriteString(fmt.Sprintf("lock-version = %q\n", lf.Metadata.LockVersion))
 	b.WriteString(fmt.Sprintf("python-versions = %q\n", lf.Metadata.PythonVersions))
 	b.WriteString(fmt.Sprintf("content-hash = %q\n", lf.Metadata.ContentHash))
+	if len(lf.Metadata.ExcludedGroups) > 0 {
+		b.WriteString("excluded-groups = [")
+		for i, g := range lf.Metadata.ExcludedGroups {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(fmt.Sprintf("%q", g))
+		}
+		b.WriteString("]\n")
+	}
 
 	return os.WriteFile(path, []byte(b.String()), 0644)
 }

@@ -47,9 +47,10 @@ type fileTOML struct {
 }
 
 type metadataTOML struct {
-	LockVersion    string `toml:"lock-version"`
-	PythonVersions string `toml:"python-versions"`
-	ContentHash    string `toml:"content-hash"`
+	LockVersion    string   `toml:"lock-version"`
+	PythonVersions string   `toml:"python-versions"`
+	ContentHash    string   `toml:"content-hash"`
+	ExcludedGroups []string `toml:"excluded-groups,omitempty"`
 }
 
 // ParseLockFile parses poetry.lock content from bytes.
@@ -64,6 +65,7 @@ func ParseLockFile(data []byte) (*LockFile, error) {
 			LockVersion:    raw.Metadata.LockVersion,
 			PythonVersions: raw.Metadata.PythonVersions,
 			ContentHash:    raw.Metadata.ContentHash,
+			ExcludedGroups: raw.Metadata.ExcludedGroups,
 		},
 	}
 

@@ -124,6 +124,7 @@ func resolveAndLock(ctx context.Context, w io.Writer, proj *pyproject.PyProject,
 	if err != nil {
 		return fmt.Errorf("resolve dependencies: %w", err)
 	}
+	excludedGroups := excludedGroupsFor(groupedDeps, opts.onlyGroups, opts.withoutGroups)
 	groupedDeps = filterGroups(groupedDeps, opts.onlyGroups, opts.withoutGroups)
 
 	// Parse project's requires-python for version filtering.
@@ -234,6 +235,7 @@ func resolveAndLock(ctx context.Context, w io.Writer, proj *pyproject.PyProject,
 	if err != nil {
 		return fmt.Errorf("build lock file: %w", err)
 	}
+	lf.Metadata.ExcludedGroups = excludedGroups
 
 	pensaLockPath := filepath.Join(filepath.Dir(pyprojectPath), "pensa.lock")
 	if err := lockfile.WritePensaLockFile(pensaLockPath, lf); err != nil {
@@ -571,6 +573,7 @@ func runLockWorkspace(ctx context.Context, w io.Writer, ws *workspace.Workspace,
 		}
 		allGroupedDeps = append(allGroupedDeps, groupedDeps...)
 	}
+	excludedGroups := excludedGroupsFor(allGroupedDeps, opts.onlyGroups, opts.withoutGroups)
 	allGroupedDeps = filterGroups(allGroupedDeps, opts.onlyGroups, opts.withoutGroups)
 
 	// Inline workspace member deps: when A depends on B (workspace member),
@@ -694,6 +697,7 @@ func runLockWorkspace(ctx context.Context, w io.Writer, ws *workspace.Workspace,
 	if err != nil {
 		return fmt.Errorf("build lock file: %w", err)
 	}
+	lf.Metadata.ExcludedGroups = excludedGroups
 
 	pensaLockPath := ws.LockFilePath()
 	if err := lockfile.WritePensaLockFile(pensaLockPath, lf); err != nil {
@@ -921,26 +925,107 @@ func groupedDepsToRequirements(deps []pyproject.GroupedDependency) []pep508.Depe
 	return reqs
 }
 
-// warnPartialLock prints a one-line notice when the user scoped the
-// lock with --only or --without. The resulting lockfile is
-// intentionally incomplete; subsequent `pensa add` / `pensa remove`
-// re-resolve the full pyproject and would clobber the partial lock,
-// so we surface the trade-off explicitly.
+// warnPartialLock prints a notice when the lock is intentionally
+// scoped to a subset of groups. Two phrasings:
+//
+//   - User-explicit (passed --only/--without on this call): names
+//     the groups they excluded and points at `pensa lock` without
+//     flags as the recovery path.
+//   - Inherited (the previous lock had excluded-groups recorded
+//     and the user just ran add/remove/update): softer wording so
+//     they don't see a warning about flags they didn't pass.
 func warnPartialLock(w io.Writer, opts lockOptions) {
 	if len(opts.onlyGroups) == 0 && len(opts.withoutGroups) == 0 {
 		return
 	}
 	ui := newUI(w, false, false)
+	if opts.excludeInherited {
+		ui.Warning(fmt.Sprintf(
+			"partial lock scope preserved from previous `pensa lock --without %v`. Run `pensa lock` without flags to re-include those groups.",
+			opts.withoutGroups))
+		return
+	}
 	switch {
 	case len(opts.onlyGroups) > 0:
 		ui.Warning(fmt.Sprintf(
-			"locked only %v (plus main); other groups are absent. `pensa add` / `pensa remove` will re-resolve everything and overwrite this partial lock.",
+			"locked only %v (plus main); other groups are absent. Run `pensa lock` without flags to re-include them.",
 			opts.onlyGroups))
 	case len(opts.withoutGroups) > 0:
 		ui.Warning(fmt.Sprintf(
-			"locked without %v; those groups are absent. `pensa add` / `pensa remove` will re-resolve everything and overwrite this partial lock.",
+			"locked without %v; those groups are absent. Run `pensa lock` without flags to re-include them.",
 			opts.withoutGroups))
 	}
+}
+
+// inheritExcludedGroups returns lockOptions seeded with the
+// excluded-groups set recorded in the project's existing lock file,
+// when the caller hasn't otherwise scoped the lock. Used by
+// `pensa add` / `pensa remove` / `pensa update` so a partial lock
+// produced by `pensa lock --without infrastructure` survives the
+// next implicit re-lock instead of silently widening into a full
+// resolve (and failing for the same reason the user excluded that
+// group in the first place).
+//
+// dir is the workspace root (or single-project dir). Returns
+// opts unchanged when no lock exists, when the caller already
+// specified group flags, or when the lock has no recorded
+// exclusion. A read error on an existing lock is propagated so
+// silent data loss on a corrupt file isn't possible.
+func inheritExcludedGroups(dir string, opts lockOptions) (lockOptions, error) {
+	if len(opts.onlyGroups) > 0 || len(opts.withoutGroups) > 0 {
+		return opts, nil
+	}
+	lockPath, _ := lockfile.DetectLockFile(dir)
+	if lockPath == "" {
+		return opts, nil
+	}
+	lf, err := lockfile.ReadLockFile(lockPath)
+	if err != nil {
+		return opts, fmt.Errorf("read lock file %s: %w", lockPath, err)
+	}
+	if len(lf.Metadata.ExcludedGroups) == 0 {
+		return opts, nil
+	}
+	opts.withoutGroups = append([]string{}, lf.Metadata.ExcludedGroups...)
+	opts.excludeInherited = true
+	return opts, nil
+}
+
+// excludedGroupsFor returns the set of groups dropped by the user's
+// `--without` / `--only` flags, sorted for stable lockfile output.
+// Recorded in lockfile metadata so subsequent `pensa add` /
+// `pensa remove` / `pensa update` re-locks honor the same exclusion
+// instead of silently widening the scope on the user's next op.
+//
+// `--only X` is normalized into the equivalent exclusion (every
+// declared group except main + X) so the on-disk format has a
+// single representation regardless of which flag the user used.
+func excludedGroupsFor(deps []pyproject.GroupedDependency, only, without []string) []string {
+	if len(only) == 0 && len(without) == 0 {
+		return nil
+	}
+	if len(without) > 0 {
+		out := append([]string{}, without...)
+		sort.Strings(out)
+		return out
+	}
+	keep := map[string]bool{"main": true}
+	for _, g := range only {
+		keep[g] = true
+	}
+	seen := map[string]bool{}
+	var excluded []string
+	for _, gd := range deps {
+		if seen[gd.Group] {
+			continue
+		}
+		seen[gd.Group] = true
+		if !keep[gd.Group] {
+			excluded = append(excluded, gd.Group)
+		}
+	}
+	sort.Strings(excluded)
+	return excluded
 }
 
 // filterGroups narrows a flat dep list to the groups requested by

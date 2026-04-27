@@ -43,6 +43,14 @@ type LockMetadata struct {
 	LockVersion    string
 	PythonVersions string
 	ContentHash    string
+	// ExcludedGroups records which dependency groups were skipped
+	// at lock time (via `pensa lock --without` / `--only`). Empty
+	// when the lock covers every declared group. Subsequent
+	// `pensa add` / `pensa remove` / `pensa update` re-locks read
+	// this so the partial scope sticks across operations instead
+	// of being silently widened the first time the user touches
+	// the lock again.
+	ExcludedGroups []string
 }
 
 // WriteLockFile writes a lock file to disk in Poetry's format.

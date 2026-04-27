@@ -14,6 +14,12 @@ type lockOptions struct {
 	upgradePackages []string // ignore pinned versions for these packages only
 	onlyGroups      []string // resolve only these groups (main is always included)
 	withoutGroups   []string // skip these groups during resolution
+	// excludeInherited is true when withoutGroups was seeded from
+	// an existing lock's excluded-groups metadata rather than from
+	// a user-supplied flag. Lets warnPartialLock soften its message
+	// for inherited scope so users don't see warnings about flags
+	// they didn't pass.
+	excludeInherited bool
 }
 
 var _ resolve.Provider = (*lockedProvider)(nil)

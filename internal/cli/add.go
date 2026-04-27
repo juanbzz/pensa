@@ -136,7 +136,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if member != nil {
 			member.Project, _ = pyproject.ReadPyProject(pyprojectPath)
 		}
-		if err := runLockWorkspace(cmd.Context(), os.Stderr, ws, lockOptions{}); err != nil {
+		lockOpts, err := inheritExcludedGroups(ws.Root, lockOptions{})
+		if err != nil {
+			return err
+		}
+		if err := runLockWorkspace(cmd.Context(), os.Stderr, ws, lockOpts); err != nil {
 			return err
 		}
 	} else {
@@ -144,7 +148,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("re-read pyproject.toml: %w", err)
 		}
-		if err := resolveAndLock(cmd.Context(), os.Stderr, proj, pyprojectPath, lockOptions{}); err != nil {
+		lockOpts, err := inheritExcludedGroups(dir, lockOptions{})
+		if err != nil {
+			return err
+		}
+		if err := resolveAndLock(cmd.Context(), os.Stderr, proj, pyprojectPath, lockOpts); err != nil {
 			return err
 		}
 	}
