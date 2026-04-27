@@ -2,6 +2,7 @@ package resolve
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -47,6 +48,54 @@ func solveErrorHint() string {
 	return "Try one of:\n" +
 		"  - pensa lock --upgrade-package <name>   refresh a single package\n" +
 		"  - widen a constraint in pyproject.toml so a wider version range is acceptable"
+}
+
+// iterationCapError is returned when the solver runs past the
+// 10000-iteration safety cap. The bare message ("exceeded 10000
+// iterations") is unactionable; users can't tell whether they hit a
+// real conflict, a slow graph, or a solver bug. The wrapped output
+// names the packages that participated in the most learned
+// incompatibilities — usually the ones the solver was thrashing on —
+// so a reader can jump straight to the suspect constraints.
+func (s *Solver) iterationCapError() error {
+	type pkgCount struct {
+		name  string
+		count int
+	}
+	var counts []pkgCount
+	for name, incompats := range s.incompatibilities {
+		if name == rootPkg {
+			continue
+		}
+		counts = append(counts, pkgCount{name, len(incompats)})
+	}
+	sort.Slice(counts, func(i, j int) bool {
+		if counts[i].count != counts[j].count {
+			return counts[i].count > counts[j].count
+		}
+		return counts[i].name < counts[j].name
+	})
+	limit := 5
+	if len(counts) < limit {
+		limit = len(counts)
+	}
+
+	var b strings.Builder
+	b.WriteString("solver: exceeded 10000 iterations without finding a solution\n")
+	if limit > 0 {
+		b.WriteString("Most-conflicted packages (likely culprits):\n")
+		for i := 0; i < limit; i++ {
+			fmt.Fprintf(&b, "  - %s (%d learned clauses)\n", counts[i].name, counts[i].count)
+		}
+		b.WriteString("\n")
+	}
+	// Cap-path hint leads with constraint widening — there's no
+	// working lock to refresh via --upgrade-package, so the
+	// pyproject edit is the recovery the user actually needs.
+	b.WriteString("Try one of:\n")
+	b.WriteString("  - widen a constraint in pyproject.toml so a wider version range is acceptable\n")
+	b.WriteString("  - pensa lock --upgrade-package <name>   to refresh a single package once the lock resolves")
+	return errors.New(b.String())
 }
 
 func collectConflicts(incompat *Incompatibility, seen map[*Incompatibility]bool) []*Incompatibility {
@@ -160,7 +209,7 @@ func (s *Solver) Solve(ctx context.Context) (*SolverResult, error) {
 			return nil, err
 		}
 		if iterations > 10000 {
-			return nil, fmt.Errorf("solver: exceeded 10000 iterations")
+			return nil, s.iterationCapError()
 		}
 		pkg, err := s.choosePackageVersion(ctx)
 		if err != nil {

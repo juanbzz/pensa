@@ -540,6 +540,39 @@ func TestSolver_PreferredMissingFromIndex(t *testing.T) {
 	assert.Equal(result.Decisions["a"].String(), "1.2.0")
 }
 
+// TestSolver_IterationCapError surfaces the most-conflicted
+// packages in its message so users hitting the 10000-iter cap
+// know which constraints to suspect rather than getting a bare
+// "exceeded N iterations" sentinel.
+func TestSolver_IterationCapError(t *testing.T) {
+	assert := is.New(t)
+
+	// Build a solver with synthesized incompatibility counts.
+	// `b` has the most learned clauses, then `c`, then `a`. The error
+	// should list them in that order, and never mention rootPkg.
+	provider := &mockProvider{packages: map[string][]mockPackage{}}
+	s := NewSolver(provider, "proj", nil)
+	clause := func() *Incompatibility { return &Incompatibility{} }
+	s.incompatibilities = map[string][]*Incompatibility{
+		rootPkg: {clause(), clause(), clause(), clause(), clause()},
+		"a":     {clause(), clause()},
+		"b":     {clause(), clause(), clause(), clause()},
+		"c":     {clause(), clause(), clause()},
+	}
+
+	msg := s.iterationCapError().Error()
+	assert.True(strings.Contains(msg, "exceeded 10000 iterations"))
+	assert.True(!strings.Contains(msg, rootPkg))
+	// Most-conflicted ordering: b (4) > c (3) > a (2).
+	bIdx := strings.Index(msg, "- b ")
+	cIdx := strings.Index(msg, "- c ")
+	aIdx := strings.Index(msg, "- a ")
+	assert.True(bIdx >= 0 && cIdx >= 0 && aIdx >= 0)
+	assert.True(bIdx < cIdx && cIdx < aIdx)
+	// Footer hint reaches the cap path too.
+	assert.True(strings.Contains(msg, "pensa lock --upgrade-package"))
+}
+
 // TestSolver_ContextCancelled confirms Solve honors ctx cancellation:
 // on a canceled context the main loop returns promptly with ctx.Err()
 // rather than completing the solve.
