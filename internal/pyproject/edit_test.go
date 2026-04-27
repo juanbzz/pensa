@@ -110,16 +110,26 @@ dependencies = [
 ]
 `
 
-// Trailing-comma style is detected — arrays without one don't get one
-// when we add (Black-style). Arrays with one keep getting one.
-func TestEditDepArray_NoTrailingCommaPreserved(t *testing.T) {
+// Trailing-comma style is preserved on the FINAL entry only.
+// Pre-existing last entry MUST gain a comma when something gets
+// inserted after it — otherwise TOML rejects two array entries on
+// consecutive lines with no separator. The "no trailing comma"
+// affordance only applies to whichever entry ends up last.
+func TestEditDepArray_NoTrailingCommaPreservedOnNewLast(t *testing.T) {
 	assert := is.New(t)
 
 	out, err := EditDepArray([]byte(noTrailingCommaSample), "project", "dependencies", EditAdd, "click>=8.0", "click")
 	assert.NoErr(err)
 	got := string(out)
-	// New entry has no trailing comma.
+	// New entry sits at the end without a trailing comma.
 	assert.True(strings.Contains(got, "    \"click>=8.0\"\n]"))
+	// Previous last entry now has a comma — without it the TOML is
+	// invalid (two consecutive entries with no separator).
+	assert.True(strings.Contains(got, "    \"rich>=13.0\",\n"))
+	// And the resulting bytes must round-trip through the parser.
+	if _, err := ParsePyProject([]byte(got)); err != nil {
+		t.Fatalf("post-edit pyproject did not re-parse: %v\n%s", err, got)
+	}
 }
 
 const singleLineSample = `[project]

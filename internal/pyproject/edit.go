@@ -318,16 +318,30 @@ func expandArrayToMultiline(data []byte, span *arraySpan) ([]byte, *arraySpan, e
 
 // insertNewEntry appends `entry` immediately before the closing `]`,
 // matching the existing array's indent and quote style.
+//
+// When the existing array has no trailing comma on its last entry,
+// we MUST add one — that entry is no longer last after insertion,
+// and TOML rejects two array entries on consecutive lines without
+// a separating comma. The "no trailing comma" style is preserved
+// only on the new final entry.
 func insertNewEntry(data []byte, span *arraySpan, style arrayStyle, entry string) []byte {
+	insertPos := span.closingLine.lineStart
 	var b bytes.Buffer
-	b.Write(data[:span.closingLine.lineStart])
+	if !style.trailingComma && len(span.entries) > 0 {
+		last := span.entries[len(span.entries)-1]
+		b.Write(data[:last.valueEnd])
+		b.WriteByte(',')
+		b.Write(data[last.valueEnd:insertPos])
+	} else {
+		b.Write(data[:insertPos])
+	}
 	b.WriteString(style.indent)
 	b.WriteString(quoteEntry(entry, style.quote))
 	if style.trailingComma {
 		b.WriteByte(',')
 	}
 	b.WriteByte('\n')
-	b.Write(data[span.closingLine.lineStart:])
+	b.Write(data[insertPos:])
 	return b.Bytes()
 }
 
