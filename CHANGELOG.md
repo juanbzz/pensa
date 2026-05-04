@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-04
+
+### Added
+
+- `pensa why <pkg>` shows the reverse-dependency chain explaining why a package is in the lock.
+- `pensa lock --upgrade` and `pensa lock --upgrade-package <name>` to selectively re-resolve.
+- Partial-group locking: `pensa lock --only group` (or `--with`/`--without`) scopes the lock to that group set, persisted across subsequent `add`/`remove`/`update`.
+- `pensa lock` is cancellable: Ctrl+C exits cleanly without leaving partial lock files.
+
+### Changed
+
+- **Breaking:** Go module path moved from `github.com/juanbzz/pensa` to `pensa.sh/pensa`. `go install pensa.sh/pensa/cmd/pensa@latest`.
+- Source published to Codeberg (`codeberg.org/juanbz/pensa`) and GitHub (`github.com/juanbzz/pensa`).
+- `pensa add` and `pensa remove` keep pyproject.toml edits to single-line diffs and add a trailing comma to the prior last entry on insert.
+- User-facing strings refer to "lock file" generically rather than `poetry.lock`.
+
+### Fixed
+
+- abi3 wheels built for older Python versions are now matched (e.g. `cp39-abi3` on Python 3.12).
+- Sdists are no longer silently skipped when no compatible wheel is available.
+- universal2 wheels: license metadata handled; falls back to sdist when the universal wheel fails.
+- `zope.interface` and `zope-interface` are treated as the same package.
+- Workspace: `pensa install --package <member>` actually scopes to that member.
+- Workspace: `pensa update` walks members instead of bailing at the root.
+- Workspace: `pensa add` and `pensa remove` aggregate top-level deps across all members.
+- Workspace: `pensa check` is workspace-aware (hash + wording).
+- Lock: transitive deps are tagged with their parent's group.
+- Lock: platform-mismatched deps dropped at lock time, not only at install.
+- Install: converges the venv when group flags filter the lock (removes packages that are no longer in scope).
+- Install: reads `pyvenv.cfg` to find the venv's Python instead of the host Python.
+- Sync: skips packages incompatible with the current Python or platform.
+- Build: surfaces the build backend's actual error message; CPython traceback frames are dropped.
+- Resolve: handles unbounded-upper `requires-python`, deps whose python-only marker can't apply, and union-covers-everything cases.
+- Resolver: defensive upper bounds on Python version are stripped so libraries don't block newer Pythons.
+- Resolver: `Union.AllowsAll` subset check; `anyConstraint.Difference` handles `Union`.
+- Marker-based extras filtering walks the AST instead of substring-matching.
+- `pensa run` parses Cobra flags correctly when running scripts.
+- Solver-failure output names the most-conflicted packages when the iteration cap is hit, gets a footer, and stops double-prefixing.
+- Multi-line diagnostic continuation lines align under the message body.
+
+### Performance
+
+- Install hard-links wheels from the global cache instead of copying, with a copy fallback across filesystems.
+- Resolver re-uses prior-run picks when re-locking.
+- Resolver keeps handled clauses across backtracks and learns version-range constraints instead of per-version atoms.
+- Resolution cache uses copy-on-write to avoid blocking writers behind readers.
+- Background prefetches are drained before flushing the resolution cache so warm runs stay warm.
+
 ## [0.2.0] - 2026-03-27
 
 ### Added
@@ -35,17 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - requires-python filtering.
 - Skip incompatible packages on install.
 - `pensa show`/`list`/`tree` in workspaces.
-
-### Performance
-
-Benchmarks on Trio (~40 packages), macOS Apple Silicon:
-
-| Scenario | uv | pensa v0.1.0 | pensa v0.2.0 |
-|---|---|---|---|
-| Resolve cold | 239ms | ~5s | **1.5s** |
-| Resolve warm | 8ms | ~5s | **724ms** |
-| Resolve no-op | 4ms | ~5s | **10ms** |
-| Install cold | 1.5s | ~8s | **3.0s** |
 
 ## [0.1.0] - 2026-03-24
 
@@ -77,6 +114,7 @@ First release. A Python package and project manager written in Go.
 - Formatted tables for `list` output
 - Python discovery via pyenv, asdf, mise, homebrew, and conda
 
-[Unreleased]: https://github.com/juanbzz/pensa/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/juanbzz/pensa/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/juanbzz/pensa/releases/tag/v0.1.0
+[Unreleased]: https://codeberg.org/juanbz/pensa/compare/v0.3.0...HEAD
+[0.3.0]: https://codeberg.org/juanbz/pensa/compare/v0.2.0...v0.3.0
+[0.2.0]: https://codeberg.org/juanbz/pensa/compare/v0.1.0...v0.2.0
+[0.1.0]: https://codeberg.org/juanbz/pensa/releases/tag/v0.1.0

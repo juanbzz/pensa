@@ -14,13 +14,13 @@ steps:
           ARCH=${PAIR#*/}
           echo "Building ${OS}/${ARCH}..."
           GOOS=$OS GOARCH=$ARCH go build \
-            -ldflags "-s -w -X github.com/juanbzz/pensa/internal/cli.Version=$VERSION" \
+            -ldflags "-s -w -X pensa.sh/pensa/internal/cli.Version=$VERSION" \
             -o dist/pensa_${VERSION}_${OS}_${ARCH} ./cmd/pensa
         done
 
         # Windows
         GOOS=windows GOARCH=amd64 go build \
-          -ldflags "-s -w -X github.com/juanbzz/pensa/internal/cli.Version=$VERSION" \
+          -ldflags "-s -w -X pensa.sh/pensa/internal/cli.Version=$VERSION" \
           -o dist/pensa_${VERSION}_windows_amd64.exe ./cmd/pensa
 
         cd dist && sha256sum * > checksums.txt

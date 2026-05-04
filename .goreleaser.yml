@@ -6,7 +6,7 @@ builds:
     binary: pensa
     ldflags:
       - -s -w
-      - -X github.com/juanbzz/pensa/internal/cli.Version={{.Version}}
+      - -X pensa.sh/pensa/internal/cli.Version={{.Version}}
     goos:
       - darwin
       - linux
