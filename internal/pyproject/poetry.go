@@ -173,17 +173,31 @@ func (p *PyProject) ResolveDependencies() ([]pep508.Dependency, error) {
 	return deps, nil
 }
 
-// ResolveAllDependencies returns dependencies from all groups (main + all named groups).
-// PEP 735 [dependency-groups] takes precedence over [tool.poetry.group.X].
+// ResolveAllDependencies returns dependencies from all groups: main,
+// PEP 735 [dependency-groups], PEP 621 [project.optional-dependencies],
+// and Poetry [tool.poetry.group.X]. Names that appear in more than one
+// source resolve under a fixed precedence in ResolveDependenciesForGroups:
+// PEP 735 > PEP 621 optional-dependencies > Poetry.
 func (p *PyProject) ResolveAllDependencies() ([]GroupedDependency, error) {
+	seen := map[string]bool{"main": true}
 	groups := []string{"main"}
-	if p.DependencyGroups != nil {
-		for name := range p.DependencyGroups {
+	add := func(name string) {
+		if !seen[name] {
+			seen[name] = true
 			groups = append(groups, name)
 		}
-	} else if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
+	}
+	for name := range p.DependencyGroups {
+		add(name)
+	}
+	if p.Project != nil {
+		for name := range p.Project.OptionalDependencies {
+			add(name)
+		}
+	}
+	if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
 		for name := range p.Tool.Poetry.Groups {
-			groups = append(groups, name)
+			add(name)
 		}
 	}
 	return p.ResolveDependenciesForGroups(groups)
@@ -222,24 +236,41 @@ func (p *PyProject) ResolveDependenciesForGroups(groups []string) ([]GroupedDepe
 		}
 	}
 
-	// Named groups — PEP 735 takes precedence over Poetry groups.
-	if p.DependencyGroups != nil {
-		for groupName := range groupSet {
-			if groupName == "main" {
-				continue
-			}
-			if _, ok := p.DependencyGroups[groupName]; !ok {
-				continue
-			}
+	// Named groups. Precedence on name collision:
+	// PEP 735 > PEP 621 optional-dependencies > Poetry groups.
+	// Each group is resolved from the first source that defines it.
+	resolved := make(map[string]bool, len(groupSet))
+	for groupName := range groupSet {
+		if groupName == "main" {
+			continue
+		}
+		if _, ok := p.DependencyGroups[groupName]; ok {
 			deps, err := p.resolvePEP735Group(groupName, groupName, make(map[string]bool))
 			if err != nil {
 				return nil, err
 			}
 			result = append(result, deps...)
+			resolved[groupName] = true
 		}
-	} else if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
+	}
+	if p.Project != nil {
+		for groupName, depStrs := range p.Project.OptionalDependencies {
+			if !groupSet[groupName] || resolved[groupName] {
+				continue
+			}
+			for _, s := range depStrs {
+				d, err := pep508.Parse(s)
+				if err != nil {
+					return nil, fmt.Errorf("parse optional-dependency in group %q: %w", groupName, err)
+				}
+				result = append(result, GroupedDependency{Dep: d, Group: groupName})
+			}
+			resolved[groupName] = true
+		}
+	}
+	if p.HasPoetrySection() && p.Tool.Poetry.Groups != nil {
 		for groupName, group := range p.Tool.Poetry.Groups {
-			if !groupSet[groupName] {
+			if !groupSet[groupName] || resolved[groupName] {
 				continue
 			}
 			for name, value := range group.Dependencies {
