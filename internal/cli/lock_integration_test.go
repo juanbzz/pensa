@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/adrg/xdg"
 )
 
 func chdir(t *testing.T, dir string) {
@@ -19,6 +21,27 @@ func chdir(t *testing.T, dir string) {
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// useTempCache redirects pensa's XDG cache to a per-test temp dir. Without
+// this, the developer's persistent ~/.cache/pensa can poison tests: a stale
+// Simple-API listing leaves 'pensa add' and 'pensa lock' disagreeing on
+// which versions exist, producing "no versions of X match" failures for
+// real, current versions (goetry-5uy).
+func useTempCache(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	orig, hadOrig := os.LookupEnv("XDG_CACHE_HOME")
+	os.Setenv("XDG_CACHE_HOME", dir)
+	xdg.Reload()
+	t.Cleanup(func() {
+		if hadOrig {
+			os.Setenv("XDG_CACHE_HOME", orig)
+		} else {
+			os.Unsetenv("XDG_CACHE_HOME")
+		}
+		xdg.Reload()
+	})
 }
 
 func TestLockIntegration_SingleDep(t *testing.T) {

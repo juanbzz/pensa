@@ -15,6 +15,7 @@ import (
 
 func setupWorkspace(t *testing.T) string {
 	t.Helper()
+	useTempCache(t)
 	dir := t.TempDir()
 
 	writeFile := func(path, content string) {

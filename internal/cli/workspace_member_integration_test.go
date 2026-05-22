@@ -156,6 +156,7 @@ func TestWorkspaceMember_RemoveFromMemberDir(t *testing.T) {
 // matching the real-world pgm monorepo pattern.
 func setupUVWorkspace(t *testing.T) string {
 	t.Helper()
+	useTempCache(t)
 	dir := t.TempDir()
 
 	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
@@ -308,6 +309,7 @@ func TestWorkspaceMember_UVFormat_RootWithoutFlag_Errors(t *testing.T) {
 // [tool.pensa.sources] — pensa's native format.
 func setupPensaWorkspace(t *testing.T) string {
 	t.Helper()
+	useTempCache(t)
 	dir := t.TempDir()
 
 	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
