@@ -13,7 +13,7 @@ steps:
       - hugo --minify --gc
 
   deploy:
-    image: node:20-alpine
+    image: node:22-alpine
     environment:
       CLOUDFLARE_API_TOKEN:
         from_secret: cloudflare_api_token
