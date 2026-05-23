@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	goRuntime "runtime"
 	"strings"
 	"time"
 
@@ -340,7 +339,7 @@ func canInstallOnPlatform(files []lockfile.PackageFile, py *python.PythonInfo) b
 		}
 
 		// Check platform tag — skip wheels for other platforms.
-		if !wheelMatchesPlatform(f.File) {
+		if !wheelMatchesPlatform(f.File, py.GOOS) {
 			continue
 		}
 
@@ -354,8 +353,11 @@ func canInstallOnPlatform(files []lockfile.PackageFile, py *python.PythonInfo) b
 }
 
 // wheelMatchesPlatform checks if a wheel filename is compatible with the
-// current OS. Wheel filenames end with {python}-{abi}-{platform}.whl.
-func wheelMatchesPlatform(filename string) bool {
+// target OS (a runtime.GOOS value). Wheel filenames end with
+// {python}-{abi}-{platform}.whl. Taking goos as an argument rather than
+// reading runtime.GOOS lets callers (and tests) ask about a platform
+// other than the host's.
+func wheelMatchesPlatform(filename, goos string) bool {
 	// Platform-independent.
 	if strings.Contains(filename, "-any.whl") {
 		return true
@@ -363,16 +365,12 @@ func wheelMatchesPlatform(filename string) bool {
 
 	switch {
 	case strings.Contains(filename, "macosx") || strings.Contains(filename, "darwin"):
-		return isDarwin()
+		return goos == "darwin"
 	case strings.Contains(filename, "manylinux") || strings.Contains(filename, "musllinux") || strings.Contains(filename, "linux"):
-		return isLinux()
+		return goos == "linux"
 	case strings.Contains(filename, "win32") || strings.Contains(filename, "win_amd64") || strings.Contains(filename, "win_arm64"):
-		return isWindows()
+		return goos == "windows"
 	}
 
 	return true // unknown platform tag, don't skip
 }
-
-func isDarwin() bool  { return goRuntime.GOOS == "darwin" }
-func isLinux() bool   { return goRuntime.GOOS == "linux" }
-func isWindows() bool { return goRuntime.GOOS == "windows" }

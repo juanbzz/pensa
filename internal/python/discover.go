@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -18,6 +19,7 @@ type PythonInfo struct {
 	Major   int
 	Minor   int
 	Patch   int
+	GOOS    string // target OS for wheel selection (runtime.GOOS); set by tests to exercise other platforms
 }
 
 // SitePackagesDir returns the site-packages path for a venv using this Python.
@@ -89,6 +91,7 @@ func FromVenv(venvPath string) (*PythonInfo, error) {
 		Major:   major,
 		Minor:   minor,
 		Patch:   patch,
+		GOOS:    runtime.GOOS,
 	}, nil
 }
 
@@ -150,5 +153,6 @@ func probe(name string) (*PythonInfo, error) {
 		Major:   major,
 		Minor:   minor,
 		Patch:   patch,
+		GOOS:    runtime.GOOS,
 	}, nil
 }

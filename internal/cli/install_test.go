@@ -16,7 +16,11 @@ import (
 // attempts hopeless downloads.
 
 func macOSArm64Py311() *python.PythonInfo {
-	return &python.PythonInfo{Major: 3, Minor: 11, Patch: 7}
+	return &python.PythonInfo{Major: 3, Minor: 11, Patch: 7, GOOS: "darwin"}
+}
+
+func linuxPy311() *python.PythonInfo {
+	return &python.PythonInfo{Major: 3, Minor: 11, Patch: 7, GOOS: "linux"}
 }
 
 func filesFromNames(names ...string) []lockfile.PackageFile {
@@ -78,4 +82,37 @@ func TestCanInstallOnPlatform_MatchingCPythonWheel(t *testing.T) {
 func TestCanInstallOnPlatform_EmptyFiles(t *testing.T) {
 	assert := is.New(t)
 	assert.True(canInstallOnPlatform(nil, macOSArm64Py311()))
+}
+
+// Regression for goetry-hhx: platform decisions must follow the
+// PythonInfo's target OS, not the host's runtime.GOOS. A macOS-only
+// wheel with no sdist is installable on darwin but not on linux,
+// regardless of where the test runs. This is the assertion that broke
+// CI when wheelMatchesPlatform read runtime.GOOS directly.
+func TestCanInstallOnPlatform_RespectsTargetOS(t *testing.T) {
+	assert := is.New(t)
+	macOnly := filesFromNames("cryptography-45.0.5-cp311-cp311-macosx_11_0_arm64.whl")
+
+	assert.True(canInstallOnPlatform(macOnly, macOSArm64Py311())) // darwin: usable
+	assert.True(!canInstallOnPlatform(macOnly, linuxPy311()))     // linux: not usable
+
+	linuxOnly := filesFromNames("cryptography-45.0.5-cp311-cp311-manylinux_2_17_x86_64.whl")
+	assert.True(!canInstallOnPlatform(linuxOnly, macOSArm64Py311())) // darwin: not usable
+	assert.True(canInstallOnPlatform(linuxOnly, linuxPy311()))       // linux: usable
+}
+
+// wheelMatchesPlatform must answer about the OS it is handed, not the
+// host. Direct unit coverage of the seam goetry-hhx restored.
+func TestWheelMatchesPlatform_UsesGivenOS(t *testing.T) {
+	assert := is.New(t)
+	mac := "cryptography-45.0.5-cp311-abi3-macosx_10_9_universal2.whl"
+	lin := "cryptography-45.0.5-cp311-cp311-manylinux_2_17_x86_64.whl"
+	win := "cryptography-45.0.5-cp311-cp311-win_amd64.whl"
+
+	assert.True(wheelMatchesPlatform(mac, "darwin"))
+	assert.True(!wheelMatchesPlatform(mac, "linux"))
+	assert.True(wheelMatchesPlatform(lin, "linux"))
+	assert.True(!wheelMatchesPlatform(lin, "windows"))
+	assert.True(wheelMatchesPlatform(win, "windows"))
+	assert.True(!wheelMatchesPlatform(win, "darwin"))
 }
