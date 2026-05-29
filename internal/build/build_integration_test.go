@@ -150,6 +150,59 @@ build-backend = "hatchling.build"
 	}
 }
 
+// goetry-wzt: setuptools.build_meta's get_requires_for_build_editable
+// runs egg_info as a side effect and writes "running egg_info\nwriting
+// .../PKG-INFO\n..." to stdout BEFORE the script's print(json.dumps(...))
+// of the actual dep list. The captured stdout must not leak that chatter
+// back to the caller as a "dep" — the symptom was `pip install` choking
+// with `ERROR: Invalid requirement: "running egg_info\n..."`.
+func TestGetEditableBuildDeps_SetuptoolsNoEggInfoLeak(t *testing.T) {
+	assert := is.New(t)
+	dir := t.TempDir()
+
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "egg_info_test"
+version = "0.1.0"
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+`), 0644)
+	pkgDir := filepath.Join(dir, "egg_info_test")
+	assert.NoErr(os.MkdirAll(pkgDir, 0755))
+	assert.NoErr(os.WriteFile(filepath.Join(pkgDir, "__init__.py"), []byte(""), 0644))
+
+	py, err := python.Discover()
+	assert.NoErr(err)
+
+	buildVenv := filepath.Join(dir, "buildenv")
+	venvPython, err := createVenv(py.Path, buildVenv)
+	assert.NoErr(err)
+	assert.NoErr(installDeps(venvPython, []string{"setuptools>=64", "wheel"}))
+
+	deps, err := getEditableBuildDeps(venvPython, dir, "setuptools.build_meta", "")
+	assert.NoErr(err)
+
+	// A PEP 508 dep is a single token (name + optional extras + version
+	// spec). Whitespace inside a returned entry means setuptools'
+	// egg_info chatter — written to stdout during the hook call —
+	// leaked through the parser. Likewise any chatter-prefix.
+	for _, d := range deps {
+		if strings.ContainsAny(d, "\n\t ") {
+			t.Fatalf("dep contains whitespace (egg_info stdout leaked): %q", d)
+		}
+		for _, prefix := range []string{"running ", "writing ", "reading "} {
+			if strings.HasPrefix(d, prefix) {
+				t.Fatalf("got egg_info chatter as a dep: %q", d)
+			}
+		}
+	}
+}
+
 func TestBuild_EditableNoPackage(t *testing.T) {
 	dir := t.TempDir()
 

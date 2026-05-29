@@ -2,6 +2,7 @@ package build
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -272,21 +273,20 @@ else:
 		return nil, err
 	}
 
-	// Parse JSON list of strings.
-	result := strings.TrimSpace(string(out))
-	if result == "[]" || result == "" {
+	// setuptools.build_meta's get_requires_for_build_editable runs
+	// egg_info as a side effect and writes "running egg_info\nwriting
+	// .../PKG-INFO\n..." to stdout BEFORE our script's final
+	// print(json.dumps(...)). Take only the last line as the JSON
+	// payload, and parse with encoding/json — by-hand splitting on ','
+	// would also wrongly tear apart a single dep like
+	// "setuptools>=1,<2" into two bogus tokens.
+	line := lastLine(strings.TrimSpace(string(out)))
+	if line == "" || line == "[]" {
 		return nil, nil
 	}
-
-	// Simple JSON array parse — strip brackets, split by comma, trim quotes.
-	result = strings.Trim(result, "[]")
 	var deps []string
-	for _, s := range strings.Split(result, ",") {
-		s = strings.TrimSpace(s)
-		s = strings.Trim(s, `"`)
-		if s != "" {
-			deps = append(deps, s)
-		}
+	if err := json.Unmarshal([]byte(line), &deps); err != nil {
+		return nil, fmt.Errorf("parse get_requires_for_build_editable output: %w", err)
 	}
 	return deps, nil
 }
