@@ -84,6 +84,32 @@ func TestCanInstallOnPlatform_EmptyFiles(t *testing.T) {
 	assert.True(canInstallOnPlatform(nil, macOSArm64Py311()))
 }
 
+// goetry-c7c: abi3 wheels are forward-compatible with any CPython
+// >= the tagged minor. psutil-7.2.2-cp36-abi3-... must be accepted on
+// a cp310 venv even when no sdist is present — the pre-filter previously
+// only matched the exact cpython tag or "-py3-", silently skipping the
+// abi3 wheel and (if no sdist) the whole package.
+func TestCanInstallOnPlatform_Abi3WheelOnly(t *testing.T) {
+	assert := is.New(t)
+	files := filesFromNames("psutil-7.2.2-cp36-abi3-macosx_11_0_arm64.whl")
+	assert.True(canInstallOnPlatform(files, macOSArm64Py311()))
+}
+
+// Companion: abi3 wheel from an OLDER cpython minor must still be
+// accepted on a NEWER venv (cp36-abi3 on cp311 is the whole point of
+// abi3). Reverse direction (cp312-abi3 on cp310) must NOT be accepted —
+// the venv's interpreter doesn't have the abi3 surface the wheel
+// requires.
+func TestCanInstallOnPlatform_Abi3MinorBound(t *testing.T) {
+	assert := is.New(t)
+	older := filesFromNames("pkg-1.0-cp36-abi3-macosx_11_0_arm64.whl")
+	assert.True(canInstallOnPlatform(older, macOSArm64Py311()))
+
+	newer := filesFromNames("pkg-1.0-cp312-abi3-macosx_11_0_arm64.whl")
+	py310 := &python.PythonInfo{Major: 3, Minor: 10, Patch: 0, GOOS: "darwin"}
+	assert.True(!canInstallOnPlatform(newer, py310))
+}
+
 // Regression for goetry-hhx: platform decisions must follow the
 // PythonInfo's target OS, not the host's runtime.GOOS. A macOS-only
 // wheel with no sdist is installable on darwin but not on linux,

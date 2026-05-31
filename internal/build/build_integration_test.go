@@ -276,6 +276,57 @@ build-backend = "hatchling.build"
 	assert.NoErr(err)
 }
 
+// goetry-c7c bug 2: when an sdist's pyproject declares only
+// "setuptools" in build-system.requires (no "wheel"), the build env
+// must still get the wheel package — setuptools < 70.1 needs it for
+// bdist_wheel. Pin <70 to remove the modern-setuptools confound and
+// fail deterministically without the fix.
+func TestBuildFromSdist_SetuptoolsWithoutWheelInRequires(t *testing.T) {
+	assert := is.New(t)
+	dir := t.TempDir()
+
+	os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`
+[project]
+name = "testsupkg"
+version = "0.1.0"
+
+[build-system]
+requires = ["setuptools>=40.8.0,<70"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+`), 0644)
+	pkgDir := filepath.Join(dir, "testsupkg")
+	assert.NoErr(os.MkdirAll(pkgDir, 0755))
+	assert.NoErr(os.WriteFile(filepath.Join(pkgDir, "__init__.py"), []byte(""), 0644))
+
+	sdistDir := filepath.Join(dir, "sdist-out")
+	sdistResult, err := Build(Options{
+		ProjectDir: dir,
+		OutputDir:  sdistDir,
+		Sdist:      true,
+	})
+	assert.NoErr(err)
+	assert.Equal(len(sdistResult.Files), 1)
+
+	py, err := python.Discover()
+	assert.NoErr(err)
+
+	wheelDir := filepath.Join(dir, "wheel-out")
+	wheelPath, err := BuildFromSdist(SdistBuildOptions{
+		Name:      "testsupkg",
+		Version:   "0.1.0",
+		SdistPath: sdistResult.Files[0],
+		OutputDir: wheelDir,
+		Python:    py,
+	})
+	assert.NoErr(err) // without the fix: "invalid command 'bdist_wheel'"
+	assert.True(strings.HasSuffix(filepath.Base(wheelPath), ".whl"))
+	_, err = os.Stat(wheelPath)
+	assert.NoErr(err)
+}
+
 func TestBuild_NoBuildSystem(t *testing.T) {
 	dir := t.TempDir()
 

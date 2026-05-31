@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -333,8 +334,15 @@ func canInstallOnPlatform(files []lockfile.PackageFile, py *python.PythonInfo) b
 			return true
 		}
 
-		// Check Python version tag.
-		if !strings.Contains(f.File, cpTag) && !strings.Contains(f.File, "-py3-") {
+		// Check Python version tag. Accept the exact cpython tag,
+		// pure-python wheels (-py3-), or stable-ABI wheels (cp3MIN-abi3-)
+		// that target an older or equal minor. abi3 wheels are forward-
+		// compatible with any CPython >= the tagged minor — without this
+		// check the abi3 wheel for e.g. psutil falls past the pre-filter
+		// and we either skip the package or detour through sdist.
+		if !strings.Contains(f.File, cpTag) &&
+			!strings.Contains(f.File, "-py3-") &&
+			!isCompatibleAbi3Wheel(f.File, py) {
 			continue
 		}
 
@@ -350,6 +358,37 @@ func canInstallOnPlatform(files []lockfile.PackageFile, py *python.PythonInfo) b
 	// accept an empty file list (downstream will fail with a clear
 	// "no sdist found for X" error instead of silently skipping).
 	return hasSdist || !hasWheel
+}
+
+// isCompatibleAbi3Wheel reports whether filename is a stable-ABI
+// (abi3) wheel forward-compatible with py. A wheel tagged cp36-abi3-…
+// means "built against the abi3 surface as of CPython 3.6, runs on any
+// CPython >= 3.6", so we accept it when py shares the same major and
+// has a minor >= the wheel's tagged minor.
+func isCompatibleAbi3Wheel(filename string, py *python.PythonInfo) bool {
+	const marker = "-abi3-"
+	idx := strings.Index(filename, marker)
+	if idx <= 0 {
+		return false
+	}
+	// The wheel's cpython tag is the hyphen-segment immediately before
+	// "-abi3-" — for "psutil-7.2.2-cp36-abi3-..." that's "cp36".
+	head := filename[:idx]
+	dash := strings.LastIndex(head, "-")
+	if dash < 0 {
+		return false
+	}
+	cp := head[dash+1:]
+	if !strings.HasPrefix(cp, "cp") || len(cp) < 4 {
+		return false
+	}
+	digits := cp[2:]
+	major := int(digits[0] - '0')
+	minor, err := strconv.Atoi(digits[1:])
+	if err != nil {
+		return false
+	}
+	return major == py.Major && py.Minor >= minor
 }
 
 // wheelMatchesPlatform checks if a wheel filename is compatible with the
