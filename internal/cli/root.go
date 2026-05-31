@@ -73,6 +73,7 @@ Use "{{flagStyle .CommandPath}} [command] --help" for more information about a c
 	cmd.AddCommand(newCheckCmd())
 	cmd.AddCommand(newEnvCmd())
 	cmd.AddCommand(newListCmd())
+	cmd.AddCommand(newOutdatedCmd())
 	cmd.AddCommand(newShowCmd())
 	cmd.AddCommand(newTreeCmd())
 	cmd.AddCommand(newWhyCmd())
