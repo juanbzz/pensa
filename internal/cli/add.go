@@ -114,6 +114,20 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Invalidate the resolution cache for every added package.
+	// getLatestCompatibleVersion above used the raw PyPIClient, which
+	// refreshes the on-disk Simple-API cache via conditional fetch when
+	// the ETag mismatches. The resolution cache's reconstructed view
+	// (resCache/<pkg>.msgpack) may still hold the pre-refresh version
+	// list, so a subsequent lock step would reconstruct PackageInfo
+	// from stale data and reject the constraint we just wrote. Drop
+	// those entries here so lock re-derives them from the fresh source.
+	if resCache, err := index.NewResolutionCache(defaultCacheDir()); err == nil {
+		for _, p := range addedNames {
+			_ = resCache.Invalidate(pep508.NormalizeName(p.name))
+		}
+	}
+
 	// Format-preserving in-place edit covers the two shapes our
 	// users actually run into: PEP 621 [project].dependencies and
 	// PEP 735 [dependency-groups].<group>. Poetry-style table

@@ -68,6 +68,21 @@ func (rc *ResolutionCache) Put(pkg *ResolutionPackage) error {
 	return nil
 }
 
+// Invalidate drops any cached entry for name, both in memory and on
+// disk. Called by 'pensa add' after it refreshes the Simple-API cache
+// for a package via raw PyPIClient — the resolution cache's
+// reconstructed view of that package may now disagree with reality,
+// so the next consumer must re-derive it from the fresh source.
+func (rc *ResolutionCache) Invalidate(name string) error {
+	rc.mem.Delete(name)
+	rc.dirty.Delete(name)
+	path := filepath.Join(rc.dir, name+".msgpack")
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // Flush writes all dirty entries to disk and clears the dirty set.
 func (rc *ResolutionCache) Flush() error {
 	var firstErr error
