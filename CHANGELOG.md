@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-31
+
+### Fixed
+
+- `pensa add <pkg>` followed by lock no longer fails with `no versions of X match >=<latest>,<4.0` when the Simple-API cache has gone stale. Add now invalidates pensa's resolution cache for every package it touches, so the lock step sees the same fresh version listing add just picked.
+- Editable install of setuptools-backed local packages (`build-backend = "setuptools.build_meta"`) now actually installs the project: the editable `.pth`, finder module, and `dist-info` end up in the venv and `import <yourproject>` works. Previously setuptools' egg_info chatter leaked into a pip requirement; third-party deps installed but the local package didn't.
+- abi3 wheels (`cp3MIN-abi3`) are no longer routed past the install pre-filter into the sdist build path. The scorer already recognized them; the install gate now does too. Affects packages like `psutil`.
+- Building a wheel from an sdist whose pyproject declares `setuptools.build_meta` but omits `wheel` from `build-system.requires` no longer fails with `error: invalid command 'bdist_wheel'`. Pensa now seeds `wheel` into the isolated build env when the backend is setuptools — same as pip/build/uv.
+
 ## [0.3.0] - 2026-05-04
 
 ### Added
