@@ -9,7 +9,7 @@ tasks:
   build:local:
     desc: Build pensa and install to ~/.bin
     cmds:
-      - go build -ldflags "-X github.com/juanbzz/pensa/internal/cli.Version={{.VERSION}}" -o ~/.bin/{{.BIN_NAME}} ./cmd/pensa
+      - go build -ldflags "-X pensa.sh/pensa/internal/cli.Version={{.VERSION}}" -o ~/.bin/{{.BIN_NAME}} ./cmd/pensa
     sources:
       - ./**/*.go
     generates:
@@ -18,7 +18,7 @@ tasks:
   build:
     desc: Build pensa binary
     cmds:
-      - go build -ldflags "-X github.com/juanbzz/pensa/internal/cli.Version={{.VERSION}}" -o ./{{.BIN_NAME}} ./cmd/pensa
+      - go build -ldflags "-X pensa.sh/pensa/internal/cli.Version={{.VERSION}}" -o ./{{.BIN_NAME}} ./cmd/pensa
 
   test:
     desc: Run unit tests
