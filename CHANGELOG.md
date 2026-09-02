@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pensa outdated` lists packages whose locked version is behind the latest release, as a table by default or `--json` for scripting. Shows top-level dependencies only; `--all` includes transitive ones.
+
 ## [0.3.1] - 2026-05-31
 
 ### Fixed
